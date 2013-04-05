@@ -11,12 +11,12 @@
          TextureView, etc.
     -->
 
-    <g.oid.GLGlobeView
-        android:id="@+id/globe"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:gravity="center"
-        android:keepScreenOn="true" />
+  <FrameLayout
+    android:id="@+id/camera_preview"
+    android:layout_width="fill_parent"
+    android:layout_height="fill_parent"
+    />
+
 
     <!--
          This FrameLayout insets its children based on system windows using

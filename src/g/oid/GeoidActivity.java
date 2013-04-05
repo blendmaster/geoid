@@ -4,11 +4,13 @@ import g.oid.util.SystemUiHider;
 
 import android.annotation.TargetApi;
 import android.app.Activity;
+import android.hardware.Camera;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.FrameLayout;
 
 /**
  * An example full-screen activity that shows and hides the system UI (i.e.
@@ -45,6 +47,10 @@ public class GeoidActivity extends Activity {
      */
     private SystemUiHider mSystemUiHider;
 
+	private Camera camera;
+
+	private CameraView cameraView;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -52,7 +58,7 @@ public class GeoidActivity extends Activity {
         setContentView(R.layout.activity_geoid);
 
         final View controlsView = findViewById(R.id.fullscreen_content_controls);
-        final View contentView = findViewById(R.id.globe);
+        final View contentView = findViewById(R.id.camera_preview);
 
         // Set up an instance of SystemUiHider to control the system UI for
         // this activity.
@@ -112,8 +118,26 @@ public class GeoidActivity extends Activity {
         // operations to prevent the jarring behavior of controls going away
         // while interacting with the UI.
 //        findViewById(R.id.dummy_button).setOnTouchListener(mDelayHideTouchListener);
+        
+        // attach camera
+        camera = getCameraInstance();
+        
+        // pass camera instance to view, according to dev guide.
+        cameraView = new CameraView(this, camera);
+        ((FrameLayout) contentView).addView(cameraView);
     }
 
+    private Camera getCameraInstance(){
+        Camera c = null;
+        try {
+            c = Camera.open(); // attempt to get a Camera instance
+        }
+        catch (Exception e){
+            // Camera is not available (in use or does not exist)
+        }
+        return c; // returns null if camera is unavailable
+    }
+    
     @Override
     protected void onPostCreate(Bundle savedInstanceState) {
         super.onPostCreate(savedInstanceState);
@@ -155,5 +179,14 @@ public class GeoidActivity extends Activity {
     private void delayedHide(int delayMillis) {
         mHideHandler.removeCallbacks(mHideRunnable);
         mHideHandler.postDelayed(mHideRunnable, delayMillis);
+    }
+    
+    @Override
+    protected void onPause() {
+    	super.onPause();
+    	
+    	if (camera != null) {
+    		camera.release();
+    	}
     }
 }
