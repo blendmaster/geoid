@@ -6,17 +6,23 @@ import org.opencv.android.CameraBridgeViewBase.CvCameraViewFrame;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewListener2;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
+import org.opencv.core.Core;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfDMatch;
 import org.opencv.core.MatOfKeyPoint;
+import org.opencv.core.Scalar;
+import org.opencv.features2d.DMatch;
+import org.opencv.features2d.DescriptorExtractor;
+import org.opencv.features2d.DescriptorMatcher;
 import org.opencv.features2d.FeatureDetector;
 import org.opencv.features2d.Features2d;
+import org.opencv.features2d.KeyPoint;
 import org.opencv.imgproc.Imgproc;
 
 import g.oid.util.SystemUiHider;
 
 import android.annotation.TargetApi;
 import android.app.Activity;
-import android.hardware.Camera;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -24,6 +30,7 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.SurfaceView;
 import android.view.View;
+import android.view.View.OnClickListener;
 
 /**
  * An example full-screen activity that shows and hides the system UI (i.e.
@@ -212,10 +219,18 @@ public class GeoidActivity extends Activity implements CvCameraViewListener2 {
 			switch (status) {
 			case LoaderCallbackInterface.SUCCESS: {
 				Log.i("geoid", "OpenCV loaded successfully");
-				detector = FeatureDetector.create(FeatureDetector.FAST);
-				rgb = new Mat();
-				output = new Mat();
+				initOpenCVVariables();
+
 				cameraView.enableView();
+
+				// when screen is touched, grab features from next frame
+				cameraView.setOnClickListener(new OnClickListener() {
+
+					@Override
+					public void onClick(View v) {
+						grabFeatures = true;
+					}
+				});
 			}
 				break;
 			default: {
@@ -224,6 +239,7 @@ public class GeoidActivity extends Activity implements CvCameraViewListener2 {
 				break;
 			}
 		}
+
 	};
 
 	@Override
@@ -237,24 +253,87 @@ public class GeoidActivity extends Activity implements CvCameraViewListener2 {
 	}
 
 	// TODO pull out feature detection logic into separate file
-	FeatureDetector detector;
+	private FeatureDetector detector;
+	private DescriptorExtractor extractor;
+	private DescriptorMatcher matcher;
+
+	// the current set of descriptors, and the set of descriptors to match
+	private Mat queryDescriptors, trainingDescriptors;
+
+	// saved image/keypoints that descriptors were pulled from
+	private Mat trainingImage;
+	private MatOfKeyPoint trainingKeypoints;
 
 	// these Mats are declared as members and reused to prevent new allocations
 	// every frame, which android's garbage detector is bad at handling
 	private Mat rgb, output, input;
 
+	private void initOpenCVVariables() {
+		detector = FeatureDetector.create(FeatureDetector.ORB);
+		extractor = DescriptorExtractor.create(DescriptorExtractor.ORB);
+		matcher = DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE);
+
+		rgb = new Mat();
+		output = new Mat();
+
+		trainingImage = new Mat();
+		trainingKeypoints = new MatOfKeyPoint();
+
+		queryDescriptors = new Mat();
+		trainingDescriptors = new Mat();
+
+		pointColor = new Scalar(255, 255, 255);
+	}
+
+	private boolean grabFeatures = true, trained = false;
+
+	private Scalar pointColor;
+
 	@Override
 	public Mat onCameraFrame(CvCameraViewFrame inputFrame) {
 		input = inputFrame.rgba();
-		MatOfKeyPoint keypoints = new MatOfKeyPoint();
-
-		detector.detect(input, keypoints);
-
 		Imgproc.cvtColor(input, rgb, Imgproc.COLOR_RGBA2RGB);
-		Features2d.drawKeypoints(rgb, keypoints, rgb);
+
+		MatOfKeyPoint keypoints = new MatOfKeyPoint();
+		detector.detect(rgb, keypoints);
+
+		// set matching descriptors to this set of features
+		if (grabFeatures) {
+			Log.d("geoid", "grabbing features from current frame...");
+			extractor.compute(rgb, keypoints, trainingDescriptors);
+
+			// trainingKeypoints = keypoints;
+			trainingImage.setTo(rgb);
+
+			grabFeatures = false;
+			trained = true;
+
+			// show just the keypoints
+			Features2d.drawKeypoints(rgb, keypoints, rgb);
+
+		} else if (trained) {
+			// match current image with existing descriptors
+
+			extractor.compute(rgb, keypoints, queryDescriptors);
+
+			MatOfDMatch matches = new MatOfDMatch();
+			matcher.match(queryDescriptors, trainingDescriptors, matches);
+
+			// draw matching keypoints
+			KeyPoint[] points = keypoints.toArray();
+			for (DMatch d : matches.toArray()) {
+				KeyPoint keypoint = points[d.queryIdx];
+				Core.circle(rgb, keypoint.pt, 10, pointColor);
+			}
+
+		} else {
+			// descriptors haven't been grabbed yet, just show input with
+			// keypoints
+
+			Features2d.drawKeypoints(rgb, keypoints, rgb);
+		}
+
 		Imgproc.cvtColor(rgb, output, Imgproc.COLOR_RGB2RGBA);
-		
-		// passthrough
 		return output;
 	}
 }
