@@ -7,6 +7,10 @@ import org.opencv.android.CameraBridgeViewBase.CvCameraViewListener2;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfKeyPoint;
+import org.opencv.features2d.FeatureDetector;
+import org.opencv.features2d.Features2d;
+import org.opencv.imgproc.Imgproc;
 
 import g.oid.util.SystemUiHider;
 
@@ -208,6 +212,9 @@ public class GeoidActivity extends Activity implements CvCameraViewListener2 {
 			switch (status) {
 			case LoaderCallbackInterface.SUCCESS: {
 				Log.i("geoid", "OpenCV loaded successfully");
+				detector = FeatureDetector.create(FeatureDetector.FAST);
+				rgb = new Mat();
+				output = new Mat();
 				cameraView.enableView();
 			}
 				break;
@@ -229,9 +236,27 @@ public class GeoidActivity extends Activity implements CvCameraViewListener2 {
 		// nothing
 	}
 
+	// TODO pull out feature detection logic into separate file
+	FeatureDetector detector;
+
+	private Mat rgb;
+
+	private Mat output;
+
+	private Mat input;
+
 	@Override
 	public Mat onCameraFrame(CvCameraViewFrame inputFrame) {
+		input = inputFrame.rgba();
+		MatOfKeyPoint keypoints = new MatOfKeyPoint();
+
+		detector.detect(input, keypoints);
+
+		Imgproc.cvtColor(input, rgb, Imgproc.COLOR_RGBA2RGB);
+		Features2d.drawKeypoints(rgb, keypoints, rgb);
+		Imgproc.cvtColor(rgb, output, Imgproc.COLOR_RGB2RGBA);
+		
 		// passthrough
-		return inputFrame.rgba();
+		return output;
 	}
 }
