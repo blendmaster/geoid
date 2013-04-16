@@ -239,11 +239,9 @@ public class GeoidActivity extends Activity implements CvCameraViewListener2 {
 	// TODO pull out feature detection logic into separate file
 	FeatureDetector detector;
 
-	private Mat rgb;
-
-	private Mat output;
-
-	private Mat input;
+	// these Mats are declared as members and reused to prevent new allocations
+	// every frame, which android's garbage detector is bad at handling
+	private Mat rgb, output, input;
 
 	@Override
 	public Mat onCameraFrame(CvCameraViewFrame inputFrame) {
