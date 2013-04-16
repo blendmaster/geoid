@@ -258,7 +258,7 @@ public class GeoidActivity extends Activity implements CvCameraViewListener2 {
 	private DescriptorMatcher matcher;
 
 	// the current set of descriptors, and the set of descriptors to match
-	private Mat queryDescriptors, trainingDescriptors;
+	private Mat queryDescriptors, trainDescriptors;
 
 	// saved image/keypoints that descriptors were pulled from
 	private Mat trainingImage;
@@ -271,7 +271,8 @@ public class GeoidActivity extends Activity implements CvCameraViewListener2 {
 	private void initOpenCVVariables() {
 		detector = FeatureDetector.create(FeatureDetector.ORB);
 		extractor = DescriptorExtractor.create(DescriptorExtractor.ORB);
-		matcher = DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE);
+		matcher = DescriptorMatcher
+				.create(DescriptorMatcher.BRUTEFORCE_HAMMING);
 
 		rgb = new Mat();
 		output = new Mat();
@@ -280,7 +281,7 @@ public class GeoidActivity extends Activity implements CvCameraViewListener2 {
 		trainingKeypoints = new MatOfKeyPoint();
 
 		queryDescriptors = new Mat();
-		trainingDescriptors = new Mat();
+		trainDescriptors = new Mat();
 
 		pointColor = new Scalar(255, 255, 255);
 	}
@@ -300,7 +301,7 @@ public class GeoidActivity extends Activity implements CvCameraViewListener2 {
 		// set matching descriptors to this set of features
 		if (grabFeatures) {
 			Log.d("geoid", "grabbing features from current frame...");
-			extractor.compute(rgb, keypoints, trainingDescriptors);
+			extractor.compute(rgb, keypoints, trainDescriptors);
 
 			// trainingKeypoints = keypoints;
 			trainingImage.setTo(rgb);
@@ -317,13 +318,31 @@ public class GeoidActivity extends Activity implements CvCameraViewListener2 {
 			extractor.compute(rgb, keypoints, queryDescriptors);
 
 			MatOfDMatch matches = new MatOfDMatch();
-			matcher.match(queryDescriptors, trainingDescriptors, matches);
+			matcher.match(queryDescriptors, trainDescriptors, matches);
 
-			// draw matching keypoints
+			DMatch[] matchesArray = matches.toArray();
+
+			float min = Float.POSITIVE_INFINITY, max = 0;
+			for (DMatch dMatch : matchesArray) {
+				float d = dMatch.distance;
+				if (d > max) {
+					max = d;
+				}
+				if (d < min) {
+					min = d;
+				}
+			}
+
+			float threshold = 2 * min;
+
+			// draw good, matching keypoints
 			KeyPoint[] points = keypoints.toArray();
-			for (DMatch d : matches.toArray()) {
+			for (DMatch d : matchesArray) {
 				KeyPoint keypoint = points[d.queryIdx];
-				Core.circle(rgb, keypoint.pt, 10, pointColor);
+				if (d.distance < threshold) {
+					Core.putText(rgb, "" + d.trainIdx, keypoint.pt,
+							Core.FONT_HERSHEY_PLAIN, 1, pointColor);
+				}
 			}
 
 		} else {
