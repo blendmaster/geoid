@@ -26,6 +26,11 @@
 struct Engine {
 	android_app* app;
 	cv::Ptr<cv::VideoCapture> capture;
+
+	bool hasFocus;
+
+	bool grabFeatures;
+	bool trained;
 };
 
 static cv::Size calc_optimal_camera_resolution(const char* supported, int width,
@@ -91,6 +96,19 @@ static void engine_draw_frame(Engine* engine, const cv::Mat& frame) {
 	ANativeWindow_unlockAndPost(engine->app->window);
 }
 
+/**
+ * Process the next input event.
+ */
+static int32_t engine_handle_input(struct android_app* app, AInputEvent* event) {
+    struct Engine* engine = (struct Engine*)app->userData;
+    if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
+    	// grab next frame's features
+        engine->grabFeatures = true;
+        return 1;
+    }
+    return 0;
+}
+
 static void engine_handle_cmd(android_app* app, int32_t cmd) {
 	Engine* engine = (Engine*) app->userData;
 	switch (cmd) {
@@ -143,6 +161,14 @@ static void engine_handle_cmd(android_app* app, int32_t cmd) {
 					"Camera initialized at resoution %dx%d", camera_resolution.width, camera_resolution.height);
 		}
 		break;
+	case APP_CMD_GAINED_FOCUS:
+		// start capturing frames
+		engine->hasFocus = true;
+		break;
+	case APP_CMD_LOST_FOCUS:
+		// stop capturing frames
+		engine->hasFocus = false;
+		break;
 	case APP_CMD_TERM_WINDOW:
 		LOGI("APP_CMD_TERM_WINDOW");
 
@@ -160,6 +186,7 @@ void android_main(android_app* app) {
 	memset(&engine, 0, sizeof(engine));
 	app->userData = &engine;
 	app->onAppCmd = engine_handle_cmd;
+	app->onInputEvent = engine_handle_input;
 	engine.app = app;
 
 	float fps = 0;
@@ -169,11 +196,14 @@ void android_main(android_app* app) {
 	cv::ORB orb;
 	cv::Mat keypoints;
 	cv::Mat trainDescriptors, queryDescriptors;
+	cv::Mat mask; // empty
+
+	cv::Scalar textColor(0, 255, 0, 255), keypointColor(255, 255, 255);
 
 	cv::BFMatcher matcher;
 
-	bool grabFeatures = false;
-	bool trained = false;
+	engine.grabFeatures = false;
+	engine.trained = false;
 
 	// loop waiting for stuff to do.
 	while (1) {
@@ -183,7 +213,8 @@ void android_main(android_app* app) {
 		android_poll_source* source;
 
 		// Process system events
-		while ((ident = ALooper_pollAll(0, NULL, &events, (void**) &source))
+		// if we don't have focus, block forever, otherwise capture continuously
+		while ((ident = ALooper_pollAll(engine.hasFocus ? 0 : -1, NULL, &events, (void**) &source))
 				>= 0) {
 			// Process this event.
 			if (source != NULL) {
@@ -202,7 +233,7 @@ void android_main(android_app* app) {
 		time_queue.push(now);
 
 		// Capture frame from camera and draw it
-		if (!engine.capture.empty()) {
+		if (engine.hasFocus && !engine.capture.empty()) {
 			if (engine.capture->grab())
 				engine.capture->retrieve(drawing_frame,
 						CV_CAP_ANDROID_COLOR_FRAME_RGBA);
@@ -212,16 +243,18 @@ void android_main(android_app* app) {
 			// my stuff
 			std::vector<cv::KeyPoint> keypoints;
 
-			if (grabFeatures) {
-				orb(drawing_frame, cv::Mat(), keypoints, trainDescriptors);
+			if (engine.grabFeatures) {
+				orb(drawing_frame, mask, keypoints, trainDescriptors);
 
-				grabFeatures = false;
-				trained = true;
+				engine.grabFeatures = false;
+				engine.trained = true;
+
+				LOGI("got training descriptors!");
 
 				// show keypoints
 				cv::drawKeypoints(drawing_frame, keypoints, drawing_frame);
-			} else if (trained) {
-				orb(drawing_frame, cv::Mat(), keypoints, queryDescriptors);
+			} else if (engine.trained) {
+				orb(drawing_frame, mask, keypoints, queryDescriptors);
 
 				std::vector<cv::DMatch> matches;
 				matcher.match(queryDescriptors, trainDescriptors, matches);
@@ -233,14 +266,16 @@ void android_main(android_app* app) {
 					}
 				}
 
-				float threshold = 1.2 * min;
+				float threshold = 2 * min;
 
 				for (int i = 0; i < matches.size(); ++i) {
 					cv::KeyPoint keypoint = keypoints[matches[i].queryIdx];
 					if (matches[i].distance < threshold) {
-						cv::putText(drawing_frame, "" + matches[i].trainIdx,
+						char buf[4];
+						sprintf(buf, "%d", matches[i].trainIdx);
+						cv::putText(drawing_frame, std::string(buf),
 								keypoint.pt, cv::FONT_HERSHEY_PLAIN, 1,
-								cv::Scalar(255, 255, 255));
+								keypointColor);
 					}
 				}
 			} else {
@@ -253,7 +288,7 @@ void android_main(android_app* app) {
 					drawing_frame.cols, drawing_frame.rows, fps);
 			cv::putText(drawing_frame, std::string(buffer), cv::Point(8, 64),
 					cv::FONT_HERSHEY_COMPLEX_SMALL, 1,
-					cv::Scalar(0, 255, 0, 255));
+					textColor);
 
 			cv::cvtColor(drawing_frame, drawing_frame, cv::COLOR_RGB2RGBA);
 			engine_draw_frame(&engine, drawing_frame);
