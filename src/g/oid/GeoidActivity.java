@@ -27,7 +27,7 @@ public class GeoidActivity extends Activity {
 				Log.i("geoid", "OpenCV loaded successfully");
 				
 				System.loadLibrary("geoid");
-				Intent intent = new Intent(GeoidActivity.this, android.app.NativeActivity.class);
+				Intent intent = new Intent(GeoidActivity.this, GeoidNativeActivity.class);
                 GeoidActivity.this.startActivity(intent);
 			}
 				break;
