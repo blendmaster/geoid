@@ -155,28 +155,27 @@ bool setupGraphics(struct engine* engine) {
 	return true;
 }
 
-const GLfloat gTriangleVertices[] = { 0.0f, 0.5f, -0.5f, -0.5f, 0.5f, -0.5f };
+const GLfloat gTriangleVertices[] = {
+		1.0, 1.0, 0.0,
+		-1.0, 1.0, 0.0,
+		1.0, -1.0, 0.0,
+		-1.0, -1.0, 0.0 };
 
 void renderFrame(struct engine* engine) {
-	static float grey;
-	grey += 0.01f;
-	if (grey > 1.0f) {
-		grey = 0.0f;
-	}
-    glClearColor(grey, grey, grey, 1.0f);
-    checkGlError("glClearColor");
-    glClear( GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-    checkGlError("glClear");
+	glClearColor(0, 0, 0, 1.0f);
+	checkGlError("glClearColor");
+	glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+	checkGlError("glClear");
 
 	glUseProgram(engine->gProgram);
 	checkGlError("glUseProgram");
 
-	glVertexAttribPointer(engine->gvPositionHandle, 2, GL_FLOAT, GL_FALSE, 0,
+	glVertexAttribPointer(engine->gvPositionHandle, 3, GL_FLOAT, GL_FALSE, 0,
 			gTriangleVertices);
 	checkGlError("glVertexAttribPointer");
 	glEnableVertexAttribArray(engine->gvPositionHandle);
 	checkGlError("glEnableVertexAttribArray");
-	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 	checkGlError("glDrawArrays");
 
 	eglSwapBuffers(engine->display, engine->surface);
