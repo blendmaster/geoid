@@ -378,7 +378,7 @@ static void engine_draw_frame(engine* engine, const cv::Mat& frame) {
 	//glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
 	checkGlError("glDrawArrays");
 
-	LOGI("opengl rendered, swapping buffers");
+	//LOGI("opengl rendered, swapping buffers");
 	eglSwapBuffers(engine->display, engine->surface);
 }
 
@@ -484,14 +484,19 @@ void android_main(android_app* app) {
 	cv::Mat drawing_frame;
 	std::queue<int64> time_queue;
 
-	cv::ORB orb;
+	cv::ORB orb(50, 2, 8, 31, 0, 2, cv::ORB::FAST_SCORE, 31);
 	cv::Mat keypoints;
 	cv::Mat trainDescriptors, queryDescriptors;
-	cv::Mat mask; // empty
 
 	cv::Scalar textColor(0, 255, 0, 255), keypointColor(255, 255, 255);
 
 	cv::BFMatcher matcher;
+
+	cv::Mat mask = cv::Mat::zeros(480, 640, CV_8U);
+	// training mask matching the one drawn on screen
+	cv::circle(mask, cv::Point(320, 240), 200, cv::Scalar(255), -1);
+
+	cv::Mat emptyMask;
 
 	engine.grabFeatures = false;
 	engine.trained = false;
@@ -546,7 +551,7 @@ void android_main(android_app* app) {
 				// show keypoints
 				cv::drawKeypoints(drawing_frame, keypoints, drawing_frame);
 			} else if (engine.trained) {
-				orb(drawing_frame, mask, keypoints, queryDescriptors);
+				orb(drawing_frame, emptyMask, keypoints, queryDescriptors);
 
 				std::vector<cv::DMatch> matches;
 				matcher.match(queryDescriptors, trainDescriptors, matches);
@@ -575,6 +580,9 @@ void android_main(android_app* app) {
 				cv::drawKeypoints(drawing_frame, keypoints, drawing_frame);
 			}
 
+			// draw calibration circle
+			cv::circle(drawing_frame, cv::Point(320, 240), 200, textColor, 1);
+
 			char buffer[256];
 			sprintf(buffer, "Display performance: %dx%d @ %.3f",
 					drawing_frame.cols, drawing_frame.rows, fps);
@@ -583,6 +591,8 @@ void android_main(android_app* app) {
 
 			cv::cvtColor(drawing_frame, drawing_frame, cv::COLOR_RGB2RGBA);
 			engine_draw_frame(&engine, drawing_frame);
+
+//			engine_draw_frame(&engine, mask);
 		}
 
 		if (time_queue.size() >= 2)
