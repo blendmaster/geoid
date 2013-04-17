@@ -43,7 +43,8 @@ struct engine {
 	int32_t height;
 
 	GLuint gProgram;
-	GLuint gvPositionHandle, gvTextureHandle;
+	GLuint gvPositionHandle, gvTextureHandle, gvTextureUniformHandle;
+	GLuint texture;
 };
 
 static void printGLString(const char *name, GLenum s) {
@@ -57,20 +58,28 @@ static void checkGlError(const char* op) {
 	}
 }
 
-static const char gVertexShader[] = "attribute vec4 vPosition;\n"
-		"attribute vec2 vertexTextureCoords;\n"
-		"varying vec2 texCoords;\n"
-		"void main() {\n"
-		"  texCoords = vertexTextureCoords;"
-		"  gl_Position = vPosition;\n"
-		"}\n";
+static const char gVertexShader[] =
+		"attribute vec4 a_position;   \n"
+     //   "attribute vec3 a_normal;     \n"
+        "attribute vec2 a_texCoord;   \n"
+        "varying vec2 v_texCoord;     \n"
+       // "varying vec3 v_normal; \n"
+        "void main()                  \n"
+        "{                            \n"
+        "   gl_Position = a_position; \n"
+        //" v_normal = a_normal; \n"
+        "   v_texCoord = a_texCoord;  \n"
+        "}                            \n";
 
-static const char gFragmentShader[] = "precision mediump float;\n"
-		"varying vec2 texCoords;\n"
-		"uniform sampler2D texture;\n"
-		"void main() {\n"
-		"  gl_FragColor = texture2D(texture, texCoords);\n"
-		"}\n";
+static const char gFragmentShader[] =
+                        "precision mediump float;                            \n"
+                        "varying vec2 v_texCoord;                            \n"
+                       // "varying vec3 v_normal; \n"
+                        "uniform sampler2D s_texture;                        \n"
+                        "void main()                                         \n"
+                        "{                                                   \n"
+						"  gl_FragColor = texture2D( s_texture, v_texCoord );\n"
+                        "}                                                   \n";
 
 GLuint loadShader(GLenum shaderType, const char* pSource) {
 	GLuint shader = glCreateShader(shaderType);
@@ -151,26 +160,50 @@ bool setupGraphics(struct engine* engine) {
 		return false;
 	}
 	engine->gvPositionHandle = glGetAttribLocation(engine->gProgram,
-			"vPosition");
+			"a_position");
 	checkGlError("glGetAttribLocation");
-	LOGI("glGetAttribLocation(\"vPosition\") = %d\n", engine->gvPositionHandle);
+	LOGI("glGetAttribLocation(\"a_position\") = %d\n", engine->gvPositionHandle);
 
 	engine->gvTextureHandle = glGetAttribLocation(engine->gProgram,
-			"vertexTextureCoords");
+			"a_texCoord");
 	checkGlError("glGetAttribLocation");
 	LOGI(
-			"glGetAttribLocation(\"vertexTextureCoords\") = %d\n", engine->gvTextureHandle);
+			"glGetAttribLocation(\"a_texCoord\") = %d\n", engine->gvTextureHandle);
+
+	engine->gvTextureUniformHandle = glGetAttribLocation(engine->gProgram,
+				"s_texture");
+		checkGlError("glGetAttribLocation");
+		LOGI(
+				"glGetAttribLocatFion(\"s_texture\") = %d\n", engine->gvTextureHandle);
 
 	glViewport(0, 0, w, h);
 	checkGlError("glViewport");
+
+	// setup texture
+	glGenTextures(1, &engine->texture);
+
+	glActiveTexture(GL_TEXTURE0);
+	checkGlError("glActiveTexture");
+	glBindTexture(GL_TEXTURE_2D, engine->texture);
+	checkGlError("glBindTexture");
+
 	return true;
 }
 
-const GLfloat gTriangleVertices[] = { 1.0, 1.0, 0.0, -1.0, 1.0, 0.0, 1.0, -1.0,
-		0.0, -1.0, -1.0, 0.0 };
+// XXX fudging the X's here, since the camera preview is narrower than my nexus s' screen size.
+const GLfloat gTriangleVertices[] = {
+		0.8, 1.0,
+		-0.8, 1.0,
+		0.8, -1.0,
+		-0.8, -1.0};
 
-const GLfloat textureVertices[] = { 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-		1.0f };
+const GLfloat textureVertices[] = {
+		1.0, 0.0,
+		0.0, 0.0,
+		1.0, 1.0,
+		0.0, 1.0 };
+
+const GLuint indices[] = { 0, 1, 2, 1, 2, 3};
 
 /**
  * Initialize an EGL context for the current display.
@@ -295,47 +328,58 @@ static cv::Size calc_optimal_camera_resolution(const char* supported, int width,
 
 static void engine_draw_frame(engine* engine, const cv::Mat& frame) {
 	if (engine->app->window == NULL)
-		return; // No window.
+		return;
 
 	glClearColor(0, 0, 0, 1.0f);
 	checkGlError("glClearColor");
 	glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 	checkGlError("glClear");
-
 	glUseProgram(engine->gProgram);
 	checkGlError("glUseProgram");
 
-	// load texture
-	GLuint textures[1];
-	glGenTextures(1, textures);
-
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, textures[0]);
+	checkGlError("glActiveTexture");
+	glBindTexture(GL_TEXTURE_2D, engine->texture);
+	checkGlError("glBindTexture");
 
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, frame.size().width,
-			frame.size().height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, frame.data);
+	// these are necessary to get android to use a non-power-of-2 size texture.
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.cols, frame.rows, 0,
+			GL_RGBA, GL_UNSIGNED_BYTE, frame.data);
 	checkGlError("glTexImage2D");
 
-	glBindBuffer(GL_ARRAY_BUFFER, engine->gvTextureHandle); // maybe not necessary?
+	// Use texture 0
+	glUniform1i(engine->gvTextureUniformHandle, 0);
+
 	glVertexAttribPointer(engine->gvTextureHandle, 2, GL_FLOAT, GL_FALSE, 0,
 			textureVertices);
-	checkGlError("glVertexAttribPointer");
+	checkGlError("glVertexAttribPointer_texturehandle");
 
-	glBindBuffer(GL_ARRAY_BUFFER, engine->gvPositionHandle);
-	glVertexAttribPointer(engine->gvPositionHandle, 3, GL_FLOAT, GL_FALSE, 0,
+	glEnableVertexAttribArray(engine->gvTextureHandle);
+	checkGlError("glEnableVertexAttribArray_textureHandle");
+
+	//glBindBuffer(GL_ARRAY_BUFFER, engine->gvPositionHandle);
+	glVertexAttribPointer(engine->gvPositionHandle, 2, GL_FLOAT, GL_FALSE, 0,
 			gTriangleVertices);
-	checkGlError("glVertexAttribPointer");
+	checkGlError("glVertexAttribPointer_positon handle");
+
 	glEnableVertexAttribArray(engine->gvPositionHandle);
-	checkGlError("glEnableVertexAttribArray");
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	checkGlError("glEnableVertexAttribArray_positionHandle");
+
+//	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	GLushort indices[] = { 0, 1, 2, 3 };
+	glDrawElements(GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_SHORT, indices);
+	//glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
 	checkGlError("glDrawArrays");
 
+	LOGI("opengl rendered, swapping buffers");
 	eglSwapBuffers(engine->display, engine->surface);
-
 }
 
 /**
@@ -534,7 +578,7 @@ void android_main(android_app* app) {
 			char buffer[256];
 			sprintf(buffer, "Display performance: %dx%d @ %.3f",
 					drawing_frame.cols, drawing_frame.rows, fps);
-			cv::putText(drawing_frame, std::string(buffer), cv::Point(8, 64),
+			cv::putText(drawing_frame, std::string(buffer), cv::Point(8, 20),
 					cv::FONT_HERSHEY_COMPLEX_SMALL, 1, textColor);
 
 			cv::cvtColor(drawing_frame, drawing_frame, cv::COLOR_RGB2RGBA);
