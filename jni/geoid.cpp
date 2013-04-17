@@ -43,7 +43,7 @@ struct engine {
 	int32_t height;
 
 	GLuint gProgram;
-	GLuint gvPositionHandle;
+	GLuint gvPositionHandle, gvTextureHandle;
 };
 
 static void printGLString(const char *name, GLenum s) {
@@ -58,13 +58,18 @@ static void checkGlError(const char* op) {
 }
 
 static const char gVertexShader[] = "attribute vec4 vPosition;\n"
+		"attribute vec2 vertexTextureCoords;\n"
+		"varying vec2 texCoords;\n"
 		"void main() {\n"
+		"  texCoords = vertexTextureCoords;"
 		"  gl_Position = vPosition;\n"
 		"}\n";
 
 static const char gFragmentShader[] = "precision mediump float;\n"
+		"varying vec2 texCoords;\n"
+		"uniform sampler2D texture;\n"
 		"void main() {\n"
-		"  gl_FragColor = vec4(0.0, 1.0, 0.0, 1.0);\n"
+		"  gl_FragColor = texture2D(texture, texCoords);\n"
 		"}\n";
 
 GLuint loadShader(GLenum shaderType, const char* pSource) {
@@ -150,36 +155,22 @@ bool setupGraphics(struct engine* engine) {
 	checkGlError("glGetAttribLocation");
 	LOGI("glGetAttribLocation(\"vPosition\") = %d\n", engine->gvPositionHandle);
 
+	engine->gvTextureHandle = glGetAttribLocation(engine->gProgram,
+			"vertexTextureCoords");
+	checkGlError("glGetAttribLocation");
+	LOGI(
+			"glGetAttribLocation(\"vertexTextureCoords\") = %d\n", engine->gvTextureHandle);
+
 	glViewport(0, 0, w, h);
 	checkGlError("glViewport");
 	return true;
 }
 
-const GLfloat gTriangleVertices[] = {
-		1.0, 1.0, 0.0,
-		-1.0, 1.0, 0.0,
-		1.0, -1.0, 0.0,
-		-1.0, -1.0, 0.0 };
+const GLfloat gTriangleVertices[] = { 1.0, 1.0, 0.0, -1.0, 1.0, 0.0, 1.0, -1.0,
+		0.0, -1.0, -1.0, 0.0 };
 
-void renderFrame(struct engine* engine) {
-	glClearColor(0, 0, 0, 1.0f);
-	checkGlError("glClearColor");
-	glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-	checkGlError("glClear");
-
-	glUseProgram(engine->gProgram);
-	checkGlError("glUseProgram");
-
-	glVertexAttribPointer(engine->gvPositionHandle, 3, GL_FLOAT, GL_FALSE, 0,
-			gTriangleVertices);
-	checkGlError("glVertexAttribPointer");
-	glEnableVertexAttribArray(engine->gvPositionHandle);
-	checkGlError("glEnableVertexAttribArray");
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-	checkGlError("glDrawArrays");
-
-	eglSwapBuffers(engine->display, engine->surface);
-}
+const GLfloat textureVertices[] = { 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+		1.0f };
 
 /**
  * Initialize an EGL context for the current display.
@@ -306,30 +297,45 @@ static void engine_draw_frame(engine* engine, const cv::Mat& frame) {
 	if (engine->app->window == NULL)
 		return; // No window.
 
-//	ANativeWindow_Buffer buffer;
-//	if (ANativeWindow_lock(engine->app->window, &buffer, NULL) < 0) {
-//		LOGW("Unable to lock window buffer");
-//		return;
-//	}
-//
-//	void* pixels = buffer.bits;
-//
-//	int left_indent = (buffer.width - frame.cols) / 2;
-//	int top_indent = (buffer.height - frame.rows) / 2;
-//
-//	for (int yy = top_indent;
-//			yy < std::min(frame.rows + top_indent, buffer.height); yy++) {
-//		unsigned char* line = (unsigned char*) pixels;
-//		memcpy(line + left_indent * 4 * sizeof(unsigned char),
-//				frame.ptr<unsigned char>(yy),
-//				std::min(frame.cols, buffer.width) * 4 * sizeof(unsigned char));
-//		// go to next line
-//		pixels = (int32_t*) pixels + buffer.stride;
-//	}
-//	ANativeWindow_unlockAndPost(engine->app->window);
+	glClearColor(0, 0, 0, 1.0f);
+	checkGlError("glClearColor");
+	glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+	checkGlError("glClear");
 
-	// then render opengl frame
-	renderFrame(engine);
+	glUseProgram(engine->gProgram);
+	checkGlError("glUseProgram");
+
+	// load texture
+	GLuint textures[1];
+	glGenTextures(1, textures);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, textures[0]);
+
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, frame.size().width,
+			frame.size().height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, frame.data);
+	checkGlError("glTexImage2D");
+
+	glBindBuffer(GL_ARRAY_BUFFER, engine->gvTextureHandle); // maybe not necessary?
+	glVertexAttribPointer(engine->gvTextureHandle, 2, GL_FLOAT, GL_FALSE, 0,
+			textureVertices);
+	checkGlError("glVertexAttribPointer");
+
+	glBindBuffer(GL_ARRAY_BUFFER, engine->gvPositionHandle);
+	glVertexAttribPointer(engine->gvPositionHandle, 3, GL_FLOAT, GL_FALSE, 0,
+			gTriangleVertices);
+	checkGlError("glVertexAttribPointer");
+	glEnableVertexAttribArray(engine->gvPositionHandle);
+	checkGlError("glEnableVertexAttribArray");
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	checkGlError("glDrawArrays");
+
+	eglSwapBuffers(engine->display, engine->surface);
+
 }
 
 /**
@@ -470,81 +476,79 @@ void android_main(android_app* app) {
 			}
 		}
 
-		engine_draw_frame(&engine, drawing_frame);
+		int64 then;
+		int64 now = cv::getTickCount();
+		time_queue.push(now);
 
-//		int64 then;
-//		int64 now = cv::getTickCount();
-//		time_queue.push(now);
-//
-//		// Capture frame from camera and draw it
-//		if (engine.hasFocus && !engine.capture.empty()) {
-//			if (engine.capture->grab())
-//				engine.capture->retrieve(drawing_frame,
-//						CV_CAP_ANDROID_COLOR_FRAME_RGBA);
-//
-//			cv::cvtColor(drawing_frame, drawing_frame, cv::COLOR_RGBA2RGB);
-//
-//			// my stuff
-//			std::vector<cv::KeyPoint> keypoints;
-//
-//			if (engine.grabFeatures) {
-//				orb(drawing_frame, mask, keypoints, trainDescriptors);
-//
-//				engine.grabFeatures = false;
-//				engine.trained = true;
-//
-//				LOGI("got training descriptors!");
-//
-//				// show keypoints
-//				cv::drawKeypoints(drawing_frame, keypoints, drawing_frame);
-//			} else if (engine.trained) {
-//				orb(drawing_frame, mask, keypoints, queryDescriptors);
-//
-//				std::vector<cv::DMatch> matches;
-//				matcher.match(queryDescriptors, trainDescriptors, matches);
-//
-//				float min = INFINITY;
-//				for (int i = 0; i < matches.size(); ++i) {
-//					if (matches[i].distance < min) {
-//						min = matches[i].distance;
-//					}
-//				}
-//
-//				float threshold = 2 * min;
-//
-//				for (int i = 0; i < matches.size(); ++i) {
-//					cv::KeyPoint keypoint = keypoints[matches[i].queryIdx];
-//					if (matches[i].distance < threshold) {
-//						char buf[4];
-//						sprintf(buf, "%d", matches[i].trainIdx);
-//						cv::putText(drawing_frame, std::string(buf),
-//								keypoint.pt, cv::FONT_HERSHEY_PLAIN, 1,
-//								keypointColor);
-//					}
-//				}
-//			} else {
-//				// show keypoints
-//				cv::drawKeypoints(drawing_frame, keypoints, drawing_frame);
-//			}
-//
-//			char buffer[256];
-//			sprintf(buffer, "Display performance: %dx%d @ %.3f",
-//					drawing_frame.cols, drawing_frame.rows, fps);
-//			cv::putText(drawing_frame, std::string(buffer), cv::Point(8, 64),
-//					cv::FONT_HERSHEY_COMPLEX_SMALL, 1, textColor);
-//
-//			cv::cvtColor(drawing_frame, drawing_frame, cv::COLOR_RGB2RGBA);
-//			engine_draw_frame(&engine, drawing_frame);
-//		}
-//
-//		if (time_queue.size() >= 2)
-//			then = time_queue.front();
-//		else
-//			then = 0;
-//
-//		if (time_queue.size() >= 25)
-//			time_queue.pop();
-//
-//		fps = time_queue.size() * (float) cv::getTickFrequency() / (now - then);
+		// Capture frame from camera and draw it
+		if (engine.hasFocus && !engine.capture.empty()) {
+			if (engine.capture->grab())
+				engine.capture->retrieve(drawing_frame,
+						CV_CAP_ANDROID_COLOR_FRAME_RGBA);
+
+			cv::cvtColor(drawing_frame, drawing_frame, cv::COLOR_RGBA2RGB);
+
+			// my stuff
+			std::vector<cv::KeyPoint> keypoints;
+
+			if (engine.grabFeatures) {
+				orb(drawing_frame, mask, keypoints, trainDescriptors);
+
+				engine.grabFeatures = false;
+				engine.trained = true;
+
+				LOGI("got training descriptors!");
+
+				// show keypoints
+				cv::drawKeypoints(drawing_frame, keypoints, drawing_frame);
+			} else if (engine.trained) {
+				orb(drawing_frame, mask, keypoints, queryDescriptors);
+
+				std::vector<cv::DMatch> matches;
+				matcher.match(queryDescriptors, trainDescriptors, matches);
+
+				float min = INFINITY;
+				for (int i = 0; i < matches.size(); ++i) {
+					if (matches[i].distance < min) {
+						min = matches[i].distance;
+					}
+				}
+
+				float threshold = 2 * min;
+
+				for (int i = 0; i < matches.size(); ++i) {
+					cv::KeyPoint keypoint = keypoints[matches[i].queryIdx];
+					if (matches[i].distance < threshold) {
+						char buf[4];
+						sprintf(buf, "%d", matches[i].trainIdx);
+						cv::putText(drawing_frame, std::string(buf),
+								keypoint.pt, cv::FONT_HERSHEY_PLAIN, 1,
+								keypointColor);
+					}
+				}
+			} else {
+				// show keypoints
+				cv::drawKeypoints(drawing_frame, keypoints, drawing_frame);
+			}
+
+			char buffer[256];
+			sprintf(buffer, "Display performance: %dx%d @ %.3f",
+					drawing_frame.cols, drawing_frame.rows, fps);
+			cv::putText(drawing_frame, std::string(buffer), cv::Point(8, 64),
+					cv::FONT_HERSHEY_COMPLEX_SMALL, 1, textColor);
+
+			cv::cvtColor(drawing_frame, drawing_frame, cv::COLOR_RGB2RGBA);
+			engine_draw_frame(&engine, drawing_frame);
+		}
+
+		if (time_queue.size() >= 2)
+			then = time_queue.front();
+		else
+			then = 0;
+
+		if (time_queue.size() >= 25)
+			time_queue.pop();
+
+		fps = time_queue.size() * (float) cv::getTickFrequency() / (now - then);
 	}
 }
