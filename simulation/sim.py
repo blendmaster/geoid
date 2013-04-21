@@ -11,10 +11,23 @@ height = 480.0
 
 def project(point3d, camera_intrinsics, camera_extrinsics):
   x, y, z = point3d
+
+  #[[x_c], [y_c], [z_c]] = np.dot(camera_extrinsics, np.array([[x], [y], [z], [1]]))
+
+  #leng = np.sqrt(x_c**2 + y_c**2 + z_c**2)
+
+  #x_c = x_c / leng
+  #y_c = y_c / leng
+  #z_c = z_c / leng
+
   projection_matrix = np.dot(camera_intrinsics, camera_extrinsics)
   [[x1], [x2], [x3]] = np.dot(projection_matrix, np.array([[x], [y], [z], [1]]))
+
+  #[[x_im], [y_im], [z_im]] = np.dot(camera_intrinsics, np.array([[x_c], [y_c], [z_c]]))
+
   x_im = x1 / x3
   y_im = x2 / x3
+
   return (x_im, y_im)
 
 def rot_z(angle):
@@ -41,26 +54,38 @@ def rot_x(angle):
 # globe radius is 1
 
 def surface_point(lat, lon, globe_pose):
-  """The 3D coordinates of a latitude/longitude surface point on the globe."""
+  """The 3D coordinates of a latitude/longitude surface point on the globe, as 
+  well as the normal vector."""
   radius, x_g, y_g, z_g, xrot, yrot, zrot = globe_pose
 
   # positive lats in north hemisphere
-  y = radius * np.sin(np.deg2rad(-lat))
+  y = radius * np.sin(np.deg2rad(lat))
 
   y_radius = radius * np.cos(np.deg2rad(lat))
 
   # positive lons to the east
-  x = y_radius * np.sin(np.deg2rad(lon))
-  z = y_radius * np.cos(np.deg2rad(lon))
+  x = y_radius * np.sin(np.deg2rad(-lon))
+  z = y_radius * np.cos(np.deg2rad(-lon))
+
+  norm = np.array([[x], [y], [z]])
+  norm_len = np.linalg.norm(norm)
+  norm = norm / norm_len
 
   # rotate
   rot = np.dot(rot_x(xrot), np.dot(rot_y(yrot), rot_z(zrot)))
   transformed = np.dot(rot, np.array([[x], [y], [z]]))
 
   [[x], [y], [z]] = transformed
+  [[xn], [yn], [zn]] = np.dot(rot, norm)
+
+  norm_flat = np.array([xn, yn, zn])
+  norm_len = np.linalg.norm(norm_flat)
+
+  #leng = np.sqrt(x**2 + y**2 + z**2)
+  #print("%f" % leng)
 
   # translate
-  return (x + x_g, y + y_g, z + z_g)
+  return (x + x_g, y + y_g, z + z_g, norm_flat)
 
 def simulated_image(points, camera_intrinsics, camera_extrinsics, globe_pose):
   """From a camera pose and globe pose in world coordinates, an image
@@ -70,32 +95,46 @@ def simulated_image(points, camera_intrinsics, camera_extrinsics, globe_pose):
   img = np.zeros((height, width, 3), np.uint8)
 
   #points = []
-  #for x in range(-10, 11, 2):
-    #for y in range(-10, 11, 2):
-      #points.append((x / 10.0, y / 10.0, 1,
-        #(((x + 10) / 20.0) * 255, ((y + 10) / 20.0 * 255), 255)))
+  #for x in range(-20, 21, 4):
+    #for y in range(-20, 21, 4):
+      #for z in range(-20, 21, 4):
+        #points.append((x / 10.0, y / 10.0, 19 + z / 10.0,
+          #(((x + 10) / 20.0) * 255, ((y + 10) / 20.0) * 255, 127 + 
+            #((z + 10) / 20.0) * 127)))
+
+  camera_pos = np.array([camera_extrinsics[0][3],
+                         camera_extrinsics[1][3],
+                         camera_extrinsics[2][3]])
 
   for point in points:
     lat, lon, (r,g,b) = point
-
-    x, y, z = surface_point(point[0], point[1], globe_pose)
+    x, y, z, norm = surface_point(point[0], point[1], globe_pose)
 
     #x, y, z, (r, g, b) = point
 
+    #print("norm: (%f, %f, %f)" % (norm[0], norm[1], norm[2]))
+
     x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
-    # TODO only draw if facing camera
+
+    eye_ray = np.array([x, y, z]) - camera_pos 
+    eye_ray = eye_ray / np.linalg.norm(eye_ray)
+    #print("eye_ray:", eye_ray)
 
     #print("x: %f, y: %f" % (x_im, y_im))
 
     # peturb randomly
 
-    # draw on image
-    cv2.circle(img,
-               (int(x_im), int(y_im)), # center
-               3, # radius
-               (b, g, r), # color, in opencv's order
-               int(-1) # stroke thickness (negative means filled in)
-               )
+    # if in range
+    if 0 < x_im < width and 0 < y_im < height:
+      # if on front face
+      if np.dot(eye_ray, norm) > 0:
+          # draw on image
+          cv2.circle(img,
+                     (int(x_im), int(y_im)), # center
+                     3, # radius
+                     (b, g, r), # color, in opencv's order
+                     int(-1) # stroke thickness (negative means filled in)
+                     )
 
   #for some amount of randomness:
     #add random blotches
@@ -142,7 +181,7 @@ def simulate(camera_intrinsics, camera_extrinsics, globe_pose, points):
   cv2.imshow('w', image)
   cv2.waitKey()
 
-fov = 66.41 # of the rear camera, in degrees, across the diagonal
+fov = 30.41 # of the rear camera, in degrees, across the diagonal
 
 fov_angle = np.arctan(height / width)
 
@@ -155,17 +194,30 @@ fy = (height / 2) / np.tan(fov_y / 2)
 # K
 # XXX how am I supposed to get square pixels with two different fov's? I dunno
 # how this is supposed to work
-camera_intrinsics = np.array([[fy, 0, width / 2, 0],
-                              [0, fy, height / 2, 0],
-                              [0, 0, 1, 0]])
+camera_intrinsics = np.array([[fy , 0  , width / 2 ]   ,
+                              [0  , fy , height / 2]   ,
+                              [0  , 0  , 1         ]])
 
-camera_extrinsics = np.array([[1, 0, 0, 0],
-                              [0, 1, 0, 0],
-                              [0, 0, 1, 0],
-                              [0, 0, 0, 1]])
+camera_world_pos = np.array([[0.0], [0.0], [0.0]]);
+
+camera_rot_x = 0.
+camera_rot_y = 0.
+camera_rot_z = 0.
+
+camera_rot = np.dot(rot_z(camera_rot_z),
+                    np.dot(rot_y(camera_rot_y), rot_x(camera_rot_x)))
+
+camera_rot_translate = np.hstack((camera_rot, camera_world_pos))
+
+camera_extrinsics = np.linalg.inv(
+    np.vstack((camera_rot_translate, np.array([0, 0, 0, 1]))))[0:3, :]
+
+print(camera_extrinsics)
+print(camera_intrinsics)
+print(np.dot(camera_intrinsics, camera_extrinsics))
 
 # radius, x, y, z, xrot (around x axis), yrot, zrot
-globe_pose = (0.5, 0, 0, 0.7, 0, 0, 0)
+globe_pose = (5, 0, 0, 30, 30, 0, 0)
 
 # points on a globe by latitude and longitude, and color (rgb)
 points = [
@@ -178,15 +230,19 @@ points = [
   (-22.9083, -43.2436, (255, 255, 0)), # rio de janeiro
 ]
 
-# test points
-#for i in range(-90, 91, 10):
-  #for j in range(-90, 91, 10):
-    #points.append((i, j, ((i + 90.0) / 180.0 * 255, (j + 90.0) / 180.0 * 255, 255)))
+#test points
 
+#for i in range(-90, 91, 10):
+
+#for j in range(0, 361, 10):
+  #points.append((0, j, ((j + 90.0) / 180.0 * 255, (j + 90.0) / 180.0 * 255, 255)))
+#for j in range(-90, 90, 10):
+  #points.append((j, 0, ((j + 90.0) / 180.0 * 255, (j + 90.0) / 180.0 * 255, 255)))
 
 i = simulated_image(points, camera_intrinsics, camera_extrinsics, globe_pose)
 
 # draw outline of globe
+# doesn't work
 x_im_or, y_im_or = project((globe_pose[1], globe_pose[2], globe_pose[3]), camera_intrinsics, camera_extrinsics)
 x_im_ed, y_im_ed = project((globe_pose[1] + globe_pose[0], globe_pose[2], globe_pose[3]), camera_intrinsics, camera_extrinsics)
 
