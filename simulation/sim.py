@@ -4,6 +4,7 @@
 # detection using thresholding and region centroids.
 import cv2
 import numpy as np
+import random
 
 # Nexus S rear camera, preview mode in OpenCV
 width  = 640.0
@@ -54,7 +55,7 @@ def rot_x(angle):
 # globe radius is 1
 
 def surface_point(lat, lon, globe_pose):
-  """The 3D coordinates of a latitude/longitude surface point on the globe, as 
+  """The 3D coordinates of a latitude/longitude surface point on the globe, as
   well as the normal vector."""
   radius, x_g, y_g, z_g, xrot, yrot, zrot = globe_pose
 
@@ -99,7 +100,7 @@ def simulated_image(points, camera_intrinsics, camera_extrinsics, globe_pose):
     #for y in range(-20, 21, 4):
       #for z in range(-20, 21, 4):
         #points.append((x / 10.0, y / 10.0, 19 + z / 10.0,
-          #(((x + 10) / 20.0) * 255, ((y + 10) / 20.0) * 255, 127 + 
+          #(((x + 10) / 20.0) * 255, ((y + 10) / 20.0) * 255, 127 +
             #((z + 10) / 20.0) * 127)))
 
   camera_pos = np.array([camera_extrinsics[0][3],
@@ -116,7 +117,7 @@ def simulated_image(points, camera_intrinsics, camera_extrinsics, globe_pose):
 
     x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
 
-    eye_ray = np.array([x, y, z]) - camera_pos 
+    eye_ray = np.array([x, y, z]) - camera_pos
     eye_ray = eye_ray / np.linalg.norm(eye_ray)
     #print("eye_ray:", eye_ray)
 
@@ -143,43 +144,95 @@ def simulated_image(points, camera_intrinsics, camera_extrinsics, globe_pose):
 
   return img
 
-def estimated_pose(camera_intrinsics, camera_extrinsics, image):
+def estimated_pose(camera_intrinsics, camera_extrinsics, image, points, globe_pose):
   """The estimated pose from an image, using opencv"""
 
   # remove noise
-  cv.open(image)
+  #cv.open(image)
 
   # find centers of points
-  centers = cv.centers(stuff)
+  #centers = cv.centers(stuff)
 
   # estimate using 3PnP method and RANSAC to throw out outliers
-  pose = cv.solvePnP(stuff)
+  #pose = cv.solvePnP(stuff)
 
-  return pose
+  camera_pos = np.array([camera_extrinsics[0][3],
+                         camera_extrinsics[1][3],
+                         camera_extrinsics[2][3]])
+
+
+  # for now, just use actual points to check if solvePnP works
+  radius, gx, gy, gz, _, _, _ = globe_pose
+
+  # model globe pose
+  model_globe = (radius, 0, 0, 0, 0, 0, 0)
+
+  # in model coordinates
+  object_points = []
+  image_points = []
+
+  for point in points:
+    lat, lon, (r,g,b) = point
+    x, y, z, norm = surface_point(point[0], point[1], globe_pose)
+
+    xm, ym, zm, _ = surface_point(point[0], point[1], model_globe)
+
+    x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
+
+    eye_ray = np.array([x, y, z]) - camera_pos
+    eye_ray = eye_ray / np.linalg.norm(eye_ray)
+
+    # peturb randomly
+    x_im = x_im + random.randint(0, 10)
+    y_im = y_im + random.randint(0, 10)
+
+    # if in range
+    if 0 < x_im < width and 0 < y_im < height:
+      # if on front face
+      if np.dot(eye_ray, norm) > 0:
+        # add to points
+        image_points.append([x_im, y_im])
+
+        # subtract globe center
+        object_points.append([xm, ym, zm])
+
+  retval, rvec, tvec = cv2.solvePnP(np.array(object_points), np.array(image_points),
+                                    camera_intrinsics, None)
+
+  [[est_x], [est_y], [est_z]] = tvec
+  [[est_rx], [est_ry], [est_rz]] = rvec
+
+  return (radius, est_x, est_y, est_z, est_rx, est_ry, est_rz)
 
 def simulate(camera_intrinsics, camera_extrinsics, globe_pose, points):
   """Simulate capturing an image of the globe and its points, then estimating
   the pose of the globe from the image."""
 
   image = simulated_image(points,
-                          camera_intrinscs,
+                          camera_intrinsics,
                           camera_extrinsics,
                           globe_pose)
 
   estimated_globe_pose = estimated_pose(camera_intrinsics,
                                         camera_extrinsics,
-                                        gmage)
+                                        image, points, globe_pose)
 
-  # convert binary image to rgb to show pose estimates
-  cv.cvtColor(stuff)
+  print(estimated_globe_pose)
 
-  # draw real and estimated pose's outline on image in different colors
-  cv.Circle(stuff)
-  cv.Circle(stuff)
+  # draw real outline of globe
+  x_im_or, y_im_or = project((globe_pose[1], globe_pose[2], globe_pose[3]), camera_intrinsics, camera_extrinsics)
+  x_im_ed, y_im_ed = project((globe_pose[1] + globe_pose[0], globe_pose[2], globe_pose[3]), camera_intrinsics, camera_extrinsics)
+  radius_im = np.sqrt((x_im_ed - x_im_or)**2 + (y_im_ed - y_im_or)**2)
+  cv2.circle(image, (int(x_im_or), int(y_im_or)), int(radius_im), (255, 255, 255), 1)
+
+  # draw estimated outline of the globe
+  x_im_or, y_im_or = project((estimated_globe_pose[1], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
+  x_im_ed, y_im_ed = project((estimated_globe_pose[1] + estimated_globe_pose[0], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
+  radius_im = np.sqrt((x_im_ed - x_im_or)**2 + (y_im_ed - y_im_or)**2)
+  cv2.circle(image, (int(x_im_or), int(y_im_or)), int(radius_im), (255, 0, 0), 1)
 
   cv2.namedWindow('w')
   cv2.imshow('w', image)
-  cv2.waitKey()
 
 fov = 30.41 # of the rear camera, in degrees, across the diagonal
 
@@ -217,7 +270,7 @@ print(camera_intrinsics)
 print(np.dot(camera_intrinsics, camera_extrinsics))
 
 # radius, x, y, z, xrot (around x axis), yrot, zrot
-globe_pose = (5, 0, 0, 30, 30, 0, 0)
+globe_pose = (5, 0, 0, 30, 30, 30, 0)
 
 # points on a globe by latitude and longitude, and color (rgb)
 points = [
@@ -239,16 +292,4 @@ points = [
 #for j in range(-90, 90, 10):
   #points.append((j, 0, ((j + 90.0) / 180.0 * 255, (j + 90.0) / 180.0 * 255, 255)))
 
-i = simulated_image(points, camera_intrinsics, camera_extrinsics, globe_pose)
-
-# draw outline of globe
-# doesn't work
-x_im_or, y_im_or = project((globe_pose[1], globe_pose[2], globe_pose[3]), camera_intrinsics, camera_extrinsics)
-x_im_ed, y_im_ed = project((globe_pose[1] + globe_pose[0], globe_pose[2], globe_pose[3]), camera_intrinsics, camera_extrinsics)
-
-radius_im = np.sqrt((x_im_ed - x_im_or)**2 + (y_im_ed - y_im_or)**2)
-
-cv2.circle(i, (int(x_im_or), int(y_im_or)), int(radius_im), (255, 255, 255), 1)
-cv2.imshow('w', i)
-
-#simulate(camera_intrinscs, camera_extrinsics, globe_pose, points)
+simulate(camera_intrinsics, camera_extrinsics, globe_pose, points)
