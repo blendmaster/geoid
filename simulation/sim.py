@@ -194,10 +194,12 @@ def estimated_pose(camera_intrinsics, camera_extrinsics, image, points, globe_po
         image_points.append([x_im, y_im])
 
         # subtract globe center
-        object_points.append([xm, ym, zm])
+        object_points.append([xm * 1.0, ym * 1.0, zm * 1.0])
 
-  retval, rvec, tvec = cv2.solvePnP(np.array(object_points), np.array(image_points),
+  rvec, tvec, inliers = cv2.solvePnPRansac(np.array(object_points, dtype=np.float32), np.array(image_points, dtype=np.float32),
                                     camera_intrinsics, None)
+
+  #print tvec
 
   [[est_x], [est_y], [est_z]] = tvec
   [[est_rx], [est_ry], [est_rz]] = rvec
