@@ -44,8 +44,8 @@ programs.globe = shader-program do
 
       bool water = val.z != 0.0;
       if (water) {
-        gl_FragColor = vec4(m, m, 1, 1.0);
+        gl_FragColor = vec4(0, m, 0, 1.0);
       } else{
-        gl_FragColor = vec4(0, 1, 0, 1.0);
+        gl_FragColor = vec4(0, 0, 0, 1.0);
       }
     }"""

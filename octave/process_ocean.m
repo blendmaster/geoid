@@ -28,7 +28,6 @@ function slice = first_depth_slice(filename)
   % disappear, like cube
   water = imresize(slice != 0, [1024, 512], 'nearest');
   land = water == 0;
-  imshow(land);
 
   % resize to powers of two for ease of use in textures
   % octave's imresize uses blinterp by default
@@ -51,11 +50,15 @@ vertical   = first_depth_slice('V.raw');
 % G: vertical   velocity, from 0 to 255
 % B: 0 if on land, 255 otherwise
 
+% 0.5 should correspond with zero
 function scaled = rescale(values)
-  m = min(min(values)); % below 0
-  r = range(reshape(values, [], 1));
+  max_abs = max(max(abs(values)));
 
-  scaled = (values .- m) ./ r;
+  scale_by = 0.5 / max_abs;
+
+  scaled_around_zero = values .* scale_by;
+
+  scaled = scaled_around_zero .+ 0.5;
 end
 
 s_h = rescale(horizontal);
