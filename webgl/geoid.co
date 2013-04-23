@@ -1,0 +1,200 @@
+# Geoid
+# Author: Steven Ruppert
+# For the Spring 2013 CSCI447 Scientific Visualization class at Colorado School
+# of Mines
+
+# this comment appears in the compiled source:
+/* This file (geoid.js) is compiled from geoid.co. Please view the
+original commented source there. */
+
+"use strict"
+
+canvas = document.getElementById \canvas
+{width, height} = canvas
+
+try
+  window.gl =
+    canvas.getContext \webgl or canvas.getContext \experimental-webgl
+
+if gl!?
+  alert "Sorry, it looks like your browser doesn't support WebGL, or webGL is \
+    disabled!"
+  throw new Error "no webgl ;_;"
+
+window.gl = WebGLDebugUtils.makeDebugContext gl
+
+# I don't like typing in gl all the time, so I will attach CONSTANTS to the
+# global context. Don't do this at home, kids.
+for k, v in gl => window[k] = v if /^[A-Z_]+$/.test k
+
+gl
+  &viewport   0 0 width, height
+  &enable     DEPTH_TEST
+  &enable     CULL_FACE
+  &clearColor 0 0 0 1 # black
+  &clear      COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT
+
+var rotation, current-rot, fov, distance
+
+!function reset-stage
+  rotation := mat4.identity!
+  current-rot := mat4.identity!
+  fov := 15deg
+  distance := 1 / Math.tan(radians(fov) / 2)
+
+reset-stage!
+
+$ \zoom-in  .addEventListener \click !-> --fov; draw!
+$ \zoom-out .addEventListener \click !-> ++fov; draw!
+
+#texture = stuff # TODO load image
+export buffers = {}
+
+load \globe gl
+
+const
+  latBands = 30
+  lonBands = 30
+
+setup-buffers = !->
+  #gl.activeTexture gl.TEXTURE0
+  #gl.bindTexture gl.TEXTURE_2D, textures # TODO
+  #uniform gl, \texture \1i 0
+
+  modelCoords = []
+  texCoords = []
+  for lat to latBands
+    theta = lat * Math.PI / latBands
+    sT = Math.sin theta; cT = Math.cos theta
+
+    for lon to lonBands
+      phi = lon * 2 * Math.PI / lonBands
+      sP = Math.sin phi; cP = Math.cos phi
+
+      modelCoords.push cP * sT, cT, sP * sT
+      texCoords.push 1 - (lon/lonBands), 1 - (lat / latBands)
+
+  idx = []
+  for lat til latBands
+    for lon til lonBands
+      fst = lat * (lonBands + 1) + lon
+      snd = fst + lonBands + 1
+
+      idx.push do
+        fst
+        fst + 1
+        snd
+        snd
+        fst + 1
+        snd + 1
+
+  buffers <<<
+    modelCoord : bind-buffer gl, \modelCoord new Float32Array(modelCoords), 3
+    texCoord   : bind-buffer gl, \texCoord new Float32Array(texCoords), 2
+
+    idx        : with gl.createBuffer!
+      gl.bindBuffer ELEMENT_ARRAY_BUFFER, &
+      gl.bufferData do
+        ELEMENT_ARRAY_BUFFER
+        new Uint16Array(idx)
+        STATIC_DRAW
+
+num-triangles = latBands * lonBands * 6
+
+export draw = !->
+  gl.clear COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT
+
+  if current-rot!? then current-rot := mat4.identity! # XXX weird bug
+  rot = mat4.multiply current-rot, rotation, mat4.create!
+
+  uniform gl, \NormalMatrix \Matrix3fv mat4.toMat3 rot
+
+  uniform gl, \ProjectionMatrix \Matrix4fv \
+    mat4.perspective fov, width / height, 0.1 100.0 # distance - 1, distance + 3
+
+  model-view = mat4.identity!
+  mat4.translate model-view, [0,0, -(distance + 1)]
+  mat4.multiply  model-view, rot
+
+  uniform gl, \ModelViewMatrix \Matrix4fv model-view
+
+  gl.activeTexture gl.TEXTURE0
+  gl.bindTexture gl.TEXTURE_2D, texture
+  gl.getUniformLocation gl.program, \texture
+    gl.uniform1i &, 0
+
+  gl.bindBuffer ELEMENT_ARRAY_BUFFER, buffers.idx
+  gl.drawElements TRIANGLES, num-triangles, UNSIGNED_SHORT, 0
+
+# load texture
+texture = gl.createTexture!
+new Image
+  &onload = !->
+    gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
+    gl.bindTexture gl.TEXTURE_2D, texture
+    gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this
+    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR
+    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST
+    gl.generateMipmap gl.TEXTURE_2D
+
+    draw!
+
+  &src = \earth.png
+
+setup-buffers!
+
+# handling mouse rotation
+
+point-under = (x,y) ->
+  {left, top} = canvas.getBoundingClientRect!
+
+  # normalize to [-1, 1]
+  x =   (x - left) * 2 / (width - 1 ) - 1
+  y = -((y - top ) * 2 / (height - 1) - 1)
+
+  det = 1 - x*x - y*y
+
+  if det >= 0
+    [x, y, Math.sqrt det]
+  else
+    [x / Math.sqrt(x*x + y*y), y / Math.sqrt(x*x + y*y), 0]
+
+canvas
+  &addEventListener \mousedown !({clientX: i0, clientY: j0}) ->
+    &style.cursor = \move
+
+    p = point-under i0, j0
+
+    rotate = !({clientX: i, clientY: j}) ->
+      q = point-under i, j
+      cp = vec3.direction [0 0 0] p
+      cq = vec3.direction [0 0 0] q
+
+      angle = Math.acos vec3.dot(cp, cq) / (vec3.length(cp) * vec3.length(cq))
+      axis = vec3.cross cp, cq
+
+      current-rot := mat4.rotate do
+        mat4.identity!
+        angle
+        axis
+
+      do draw
+
+    &addEventListener \mousemove rotate
+
+    stop = let ran = false
+      !->
+        if not ran
+          ran := true
+
+          mat4.multiply current-rot, rotation, rotation
+          current-rot := mat4.identity!
+
+        &style.cursor = \pointer
+        &removeEventListener \mousemove rotate
+        &removeEventListener \mouseup stop
+        &removeEventListener \mouseleave stop
+
+    &addEventListener \mouseup stop
+    &addEventListener \mouseleave stop
+

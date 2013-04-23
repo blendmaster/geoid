@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang=en>
+<meta charset=utf-8>
+<title>Geoid, webgl edition</title>
+
+<style>
+  input:not(:disabled), button, label { cursor: pointer }
+  #canvas { cursor: pointer }
+  #texture { list-style-type: none; padding-left: 0 }
+</style>
+
+<h1>Geoid</h1>
+
+<p>This is a WebGL version of the ocean current visualization part of geoid, made
+   so I can developer with a tighter feedback loop than the android NDK.
+
+<form id=controls action=#>
+  <div>
+    <button id=zoom-in  type=button>Zoom in</button>
+    <button id=zoom-out type=button>Zoom out</button>
+  </div>
+</form>
+
+<div>
+  <canvas id=canvas width=500 height=500>
+    Oh gosh, your browser doesn't support canvas ;_;
+  </canvas>
+</div>
+
+<footer>
+  <small>
+    Written in 2013 by Steven Ruppert.
+  </small>
+</footer>
+
+<script src=webgl-debug.js></script>
+<script src=gl-matrix-min.js></script>
+<script src=utils.js></script>
+<script src=programs.js></script>
+<script src=geoid.js></script>

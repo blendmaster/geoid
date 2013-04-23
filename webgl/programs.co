@@ -1,0 +1,42 @@
+# Geoid GLSL programs
+# Author: Steven Ruppert
+
+# this comment appears in the compiled source:
+/* This file (programs.js) is compiled from programs.co. Please view the
+original commented source there. */
+
+"use strict"
+
+programs = {}
+
+export load = (it, gl) -> programs[it] gl
+
+programs.globe = shader-program do
+  vertex: """
+    precision mediump float;
+
+    attribute vec3 modelCoord;
+    attribute vec2 texCoord;
+
+    varying vec2 tex;
+
+    uniform mat4 ModelViewMatrix;
+    uniform mat4 ProjectionMatrix;
+
+    void main() {
+      tex = texCoord;
+
+      vec4 WorldCoord = ModelViewMatrix * vec4(modelCoord,1.0);
+
+      gl_Position = ProjectionMatrix * WorldCoord;
+    }"""
+  fragment: """
+    precision mediump float;
+
+    uniform sampler2D texture;
+
+    varying vec2 tex; // coords
+
+    void main() {
+      gl_FragColor = vec4(texture2D(texture, tex).xyz + vec3(0.3, 0.3, 0.3), 1.0);
+    }"""

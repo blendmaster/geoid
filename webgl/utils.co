@@ -1,0 +1,110 @@
+# Geoid utility functions, originally from:
+#
+# Webjelly utility functions
+# Author: Steven Ruppert
+# For the Fall 2012 CSCI441 Graphics class at Colorado School of Mines
+
+# this comment appears in the compiled source:
+/* This file (utils.js) is compiled from utils.co. Please view the
+original commented source there. */
+
+"use strict"
+
+# shorthand for applying translation to the identity
+mat4.translation = (translation) ->
+  mat4.translate mat4.identity!, translation
+
+export log = -> console.log it; it
+
+export degrees = -> it * 180 / Math.PI
+export radians = -> it * Math.PI / 180
+
+export $ = -> document.getElementById it
+
+# the texture from a binary ppm image file
+export read-ppm = (gl, it) ->
+  try
+    [ , width, height, pixels] = it.match /P6\n(\d+) (\d+)\n255\n([\s\S]+)/
+  catch
+    throw Error "not a valid binary ppm!"
+  width = parseInt width, 10
+  height = parseInt height, 10
+  data = new Uint8Array width * height * 3
+  for i til pixels.length
+    data[i] = pixels.charCodeAt i
+
+  tex = gl.createTexture!
+  gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
+  gl.bindTexture gl.TEXTURE_2D, tex
+  gl.texImage2D gl.TEXTURE_2D, 0, gl.RGB, width, height, 0, gl.RGB, gl.UNSIGNED_BYTE, data
+  gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST
+  gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST
+  return tex
+
+# from vertex and fragment glsl source, a function that attaches the program
+# and runs initialization code provided
+export shader-program = ({vertex, fragment, uniforms ? {}}) -> (gl) ->
+  vertex-shader = gl.createShader gl.VERTEX_SHADER
+    gl.shaderSource (&), vertex
+    gl.compileShader (&)
+    unless gl.getShaderParameter (&), COMPILE_STATUS
+      throw new Error "couldn't compile vertex shader!\n#{gl.getShaderInfoLog(&)}"
+
+  fragment-shader = gl.createShader gl.FRAGMENT_SHADER
+    gl.shaderSource (&), fragment
+    gl.compileShader (&)
+    unless gl.getShaderParameter (&), COMPILE_STATUS
+      throw new Error "couldn't compile fragment shader!\n#{gl.getShaderInfoLog(&)}"
+
+  program = gl.createProgram!
+    gl.attachShader (&), vertex-shader
+    gl.attachShader (&), fragment-shader
+    gl.linkProgram (&)
+    unless gl.getProgramParameter (&), LINK_STATUS
+      throw new Error "couldn't intialize shader program!"
+
+  gl.program = program # handy shortcut
+  gl.useProgram program
+  for name, [type, ...value] in uniforms
+    gl"uniform#type".apply do
+      gl
+      [gl.getUniformLocation program, name].concat value
+
+export defer = (t, fn) -> setTimeout fn, t
+
+# change handler for a file input
+export reading = (id, reader-fn, fn) ->
+  onchange = !->
+    if @files.0
+      new FileReader
+        &onload = !-> fn @result
+        &"read#reader-fn" that
+
+  $ id
+    &addEventListener \change onchange
+    onchange.call (&) # handle initial state
+
+# sets uniform without verbosity; expects gl.program to be program
+export uniform = (gl, name, type, value) ->
+  gl"uniform#type" do
+    gl.getUniformLocation gl.program, name
+    false
+    value
+
+# binds attribute buffer without verbosity; expects gl.program to be program
+# returns buffer
+export bind-buffer = (gl, name, value, element-length, type = ARRAY_BUFFER) ->
+  buf = gl.createBuffer!
+    gl.bindBuffer type, (&)
+    gl.bufferData do
+      type
+      value
+      STATIC_DRAW
+
+    # bind to varying coordiantes
+    gl.getAttribLocation gl.program, name
+      gl.enableVertexAttribArray (&)
+      gl.vertexAttribPointer (&), element-length, gl.FLOAT, false 0 0
+
+  return buf
+
