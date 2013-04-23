@@ -24,9 +24,16 @@ function slice = first_depth_slice(filename)
 
   slice = slices(:,:,1);
 
+  % land needs to be scaled with nearest neighbor or smaller islands will
+  % disappear, like cube
+  water = imresize(slice != 0, [1024, 512], 'nearest');
+  land = water == 0;
+  imshow(land);
+
   % resize to powers of two for ease of use in textures
   % octave's imresize uses blinterp by default
   slice = imresize(slice, [1024, 512]);
+  slice(land) = 0;
 
   % the ocean data is rotated clockwise for some reason, so correct
   slice = rot90(slice);
