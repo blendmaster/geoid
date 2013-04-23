@@ -139,7 +139,7 @@ new Image
 
     draw!
 
-  &src = \earth.png
+  &src = \ocean-current.png
 
 setup-buffers!
 

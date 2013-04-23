@@ -104,7 +104,7 @@ original commented source there. */
     gl.generateMipmap(gl.TEXTURE_2D);
     draw();
   };
-  x1$.src = 'earth.png';
+  x1$.src = 'ocean-current.png';
   setupBuffers();
   pointUnder = function(x, y){
     var ref$, left, top, det;
