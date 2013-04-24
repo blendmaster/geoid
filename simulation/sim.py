@@ -324,7 +324,7 @@ points = [
   (28.6667, 77.2167, (255, 0, 0)), # new delhi
   (31.7833, 35.2167, (0, 255, 0)),  # jerusalem
   (40.7142, -74.0064, (0, 0, 255)), # new york
-  (36.1430, -5.3530, (127, 0, 0)), # carthage
+  (33.5992, -7.6200, (127, 0, 0)), # casablanca
   (-33.9767, 18.4244, (255, 0, 255)), # cape town
   (-22.9083, -43.2436, (255, 255, 0)), # rio de janeiro
 ]
@@ -342,6 +342,11 @@ points = [
 
 cam = create_capture(0)
 
+#cam.set(cv2.cv.CV_CAP_PROP_BRIGHTNESS, -10)
+cam.set(cv2.cv.CV_CAP_PROP_EXPOSURE, -20)
+#cam.set(cv2.cv.CV_CAP_PROP_GAIN, -15)
+cam.set(cv2.cv.CV_CAP_PROP_SATURATION, 100)
+
 while True:
   ret, img = cam.read()
   t = clock()
@@ -351,10 +356,9 @@ while True:
 
   retval, thresholded = cv2.threshold(
       gray,
-      thresh=200,
+      thresh=250,
       maxval=255,
       type=cv2.THRESH_BINARY)
-
 
   # remove noise if needed (maybe with nice thresholding / camera exposure, it
   # won't be necessary
@@ -362,13 +366,16 @@ while True:
   st = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
   opened = cv2.morphologyEx(thresholded, cv2.MORPH_OPEN, st, iterations=1)
 
-  img[opened != 0] = np.array([0, 0, 0])
+  # mask thresholded areas in color image
+  img[opened == 0] = np.array([0, 0, 0])
   #contours, hierarchy = cv2.findContours(
       #thresholded,
       #cv2.RETR_TREE,
       #cv2.CHAIN_APPROX_SIMPLE)
 
-  vis = img.copy()
+  #red = img[:, :, 1].copy()
+
+  vis = img
   dt = clock() - t
 
   draw_str(vis, (20, 20), 'time: %.1f ms' % (dt*1000))
