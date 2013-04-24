@@ -5,6 +5,8 @@
 import cv2
 import numpy as np
 import random
+from video import create_capture
+from common import clock, draw_str
 
 # Nexus S rear camera, preview mode in OpenCV
 width  = 640.0
@@ -124,6 +126,8 @@ def simulated_image(points, camera_intrinsics, camera_extrinsics, globe_pose):
     #print("x: %f, y: %f" % (x_im, y_im))
 
     # peturb randomly
+    x_im = x_im + random.randint(0, 10)
+    y_im = y_im + random.randint(0, 10)
 
     # if in range
     if 0 < x_im < width and 0 < y_im < height:
@@ -147,54 +151,94 @@ def simulated_image(points, camera_intrinsics, camera_extrinsics, globe_pose):
 def estimated_pose(camera_intrinsics, camera_extrinsics, image, points, globe_pose):
   """The estimated pose from an image, using opencv"""
 
-  # remove noise
-  #cv.open(image)
-
-  # find centers of points
-  #centers = cv.centers(stuff)
-
-  # estimate using 3PnP method and RANSAC to throw out outliers
-  #pose = cv.solvePnP(stuff)
-
   camera_pos = np.array([camera_extrinsics[0][3],
                          camera_extrinsics[1][3],
                          camera_extrinsics[2][3]])
 
-
-  # for now, just use actual points to check if solvePnP works
   radius, gx, gy, gz, _, _, _ = globe_pose
 
   # model globe pose
   model_globe = (radius, 0, 0, 0, 0, 0, 0)
 
-  # in model coordinates
+  gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+
+  thresholded = cv2.adaptiveThreshold(
+      gray,
+      255,
+      cv2.ADAPTIVE_THRESH_MEAN_C,
+      cv2.THRESH_BINARY,
+      7,
+      0)
+
+  # remove noise if needed (maybe with nice thresholding / camera exposure, it
+  # won't be necessary
+  #cv.open(image)
+
+  contours, hierarchy = cv2.findContours(
+      thresholded,
+      cv2.RETR_TREE,
+      cv2.CHAIN_APPROX_SIMPLE)
+
   object_points = []
   image_points = []
+  centroids = np.zeros_like(thresholded)
+  for i, contour in enumerate(contours):
+    m = cv2.moments(contour)
+    xim, yim = ( m['m10']/m['m00'],m['m01']/m['m00'] )
+    cv2.circle(centroids, (int(xim), int(yim)), 1, 255, -1)
 
-  for point in points:
-    lat, lon, (r,g,b) = point
-    x, y, z, norm = surface_point(point[0], point[1], globe_pose)
+    # find average color in original image
+    mask = np.zeros_like(thresholded, dtype=np.uint8)
+    cv2.drawContours(mask, contours, i, 1, -1)
+    b, g, r, _ = cv2.mean(image, mask)
 
-    xm, ym, zm, _ = surface_point(point[0], point[1], model_globe)
+    # find matches in trained points
+    for j, point in enumerate(points):
+      lat, lon, (pr, pg, pb) = point
 
-    x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
+      dist = np.sqrt((float(pr) - r)**2 + (float(pg) - g)**2 + (float(pb) - b)**2)
+      if dist < 30:
+        x, y, z, _ = surface_point(lat, lon, model_globe)
+        object_points.append([x, y, z])
+        image_points.append([xim, yim])
 
-    eye_ray = np.array([x, y, z]) - camera_pos
-    eye_ray = eye_ray / np.linalg.norm(eye_ray)
+  cv2.namedWindow('threshold')
+  cv2.imshow('threshold', centroids)
 
-    # peturb randomly
-    x_im = x_im + random.randint(0, 10)
-    y_im = y_im + random.randint(0, 10)
+  print(object_points)
+  print(image_points)
 
-    # if in range
-    if 0 < x_im < width and 0 < y_im < height:
-      # if on front face
-      if np.dot(eye_ray, norm) > 0:
-        # add to points
-        image_points.append([x_im, y_im])
+  # in model coordinates
+  #object_points = []
+  #image_points = []
 
-        # subtract globe center
-        object_points.append([xm * 1.0, ym * 1.0, zm * 1.0])
+  #for point in points:
+    #lat, lon, (r,g,b) = point
+    #x, y, z, norm = surface_point(point[0], point[1], globe_pose)
+
+    #xm, ym, zm, _ = surface_point(point[0], point[1], model_globe)
+
+    #x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
+
+    #eye_ray = np.array([x, y, z]) - camera_pos
+    #eye_ray = eye_ray / np.linalg.norm(eye_ray)
+
+    ## peturb randomly
+    ##x_im = x_im + random.randint(0, 10)
+    ##y_im = y_im + random.randint(0, 10)
+
+    ## if in range
+    #if 0 < x_im < width and 0 < y_im < height:
+      ## if on front face
+      #if np.dot(eye_ray, norm) > 0:
+        ## add to points
+        #image_points.append([int(x_im), int(y_im)])
+
+        ## subtract globe center
+        #object_points.append([xm * 1.0, ym * 1.0, zm * 1.0])
+
+  #print(object_points)
+  #print(image_points)
 
   rvec, tvec, inliers = cv2.solvePnPRansac(np.array(object_points, dtype=np.float32), np.array(image_points, dtype=np.float32),
                                     camera_intrinsics, None)
@@ -294,4 +338,45 @@ points = [
 #for j in range(-90, 90, 10):
   #points.append((j, 0, ((j + 90.0) / 180.0 * 255, (j + 90.0) / 180.0 * 255, 255)))
 
-simulate(camera_intrinsics, camera_extrinsics, globe_pose, points)
+#simulate(camera_intrinsics, camera_extrinsics, globe_pose, points)
+
+cam = create_capture(0)
+
+while True:
+  ret, img = cam.read()
+  t = clock()
+
+  gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+  gray = cv2.equalizeHist(gray)
+
+  retval, thresholded = cv2.threshold(
+      gray,
+      thresh=200,
+      maxval=255,
+      type=cv2.THRESH_BINARY)
+
+
+  # remove noise if needed (maybe with nice thresholding / camera exposure, it
+  # won't be necessary
+  #cv.open(image)
+  st = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+  opened = cv2.morphologyEx(thresholded, cv2.MORPH_OPEN, st, iterations=1)
+
+  img[opened != 0] = np.array([0, 0, 0])
+  #contours, hierarchy = cv2.findContours(
+      #thresholded,
+      #cv2.RETR_TREE,
+      #cv2.CHAIN_APPROX_SIMPLE)
+
+  vis = img.copy()
+  dt = clock() - t
+
+  draw_str(vis, (20, 20), 'time: %.1f ms' % (dt*1000))
+  cv2.imshow('camera', vis)
+
+  if 0xFF & cv2.waitKey(5) == 27:
+    break
+
+cam.release()
+cv2.destroyAllWindows()
+
