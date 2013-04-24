@@ -351,27 +351,46 @@ while True:
   ret, img = cam.read()
   t = clock()
 
-  gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-  gray = cv2.equalizeHist(gray)
+  hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
+  # threshold based on value (brightness)
+  value = hsv[:, :, 2]
   retval, thresholded = cv2.threshold(
-      gray,
-      thresh=250,
+      value,
+      thresh=40,
       maxval=255,
       type=cv2.THRESH_BINARY)
 
-  # remove noise if needed (maybe with nice thresholding / camera exposure, it
-  # won't be necessary
-  #cv.open(image)
-  st = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+  # eliminate small regions
+  st = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (8, 8))
   opened = cv2.morphologyEx(thresholded, cv2.MORPH_OPEN, st, iterations=1)
 
-  # mask thresholded areas in color image
-  img[opened == 0] = np.array([0, 0, 0])
-  #contours, hierarchy = cv2.findContours(
-      #thresholded,
-      #cv2.RETR_TREE,
-      #cv2.CHAIN_APPROX_SIMPLE)
+  contours, hierarchy = cv2.findContours(
+      opened,
+      cv2.RETR_TREE,
+      cv2.CHAIN_APPROX_SIMPLE)
+
+  contoured = np.zeros_like(thresholded, dtype=np.uint8)
+  cv2.drawContours(contoured, contours, -1, 255, -1)
+
+  # mask non-contoured areas in color image
+  img[contoured == 0] = np.array([0, 0, 0])
+
+  for i, contour in enumerate(contours):
+    m = cv2.moments(contour)
+
+    if m['m00'] == 0:
+      continue
+
+    xim, yim = ( m['m10']/m['m00'],m['m01']/m['m00'] )
+    cv2.circle(img, (int(xim), int(yim)), 1, (255, 0, 0), -1)
+
+    # find average color in original image
+    mask = np.zeros_like(thresholded, dtype=np.uint8)
+    cv2.drawContours(mask, contours, i, 1, -1)
+    h, s, v, _ = cv2.mean(hsv, mask)
+
+    draw_str(img, (int(xim), int(yim)), 'color: %f, %f, %f' % (h, s, v))
 
   #red = img[:, :, 1].copy()
 
