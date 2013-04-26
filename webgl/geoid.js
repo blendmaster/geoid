@@ -69,6 +69,9 @@ original commented source there. */
       }
     }
     console.log('idx size', idx.length, 'model size', modelCoords.length, 'tex size', texCoords.length);
+    out$.modelCoords = modelCoords;
+    out$.texCoords = texCoords;
+    out$.idx = idx;
     buffers.modelCoord = bindBuffer(gl, 'modelCoord', new Float32Array(modelCoords), 3);
     buffers.texCoord = bindBuffer(gl, 'texCoord', new Float32Array(texCoords), 2);
     buffers.idx = (x1$ = gl.createBuffer(), gl.bindBuffer(ELEMENT_ARRAY_BUFFER, x1$), gl.bufferData(ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), STATIC_DRAW), x1$);
@@ -83,6 +86,7 @@ original commented source there. */
     rot = mat4.multiply(currentRot, rotation, mat4.create());
     uniform(gl, 'NormalMatrix', 'Matrix3fv', mat4.toMat3(rot));
     uniform(gl, 'ProjectionMatrix', 'Matrix4fv', mat4.perspective(fov, width / height, 0.1, 100.0));
+    console.log(mat4.perspective(fov, width / height, 0.1, 100.0));
     modelView = mat4.identity();
     mat4.translate(modelView, [0, 0, -(distance + 1)]);
     mat4.multiply(modelView, rot);

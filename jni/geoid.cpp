@@ -55,6 +55,7 @@ struct engine {
 
 	GLuint globeNumTriangles;
 	std::vector<GLushort> globeIndices;
+	std::vector<GLfloat> texCoords, modelCoords;
 };
 
 static void printGLString(const char *name, GLenum s) {
@@ -142,7 +143,7 @@ static const char gFragmentShaderGlobe[] =
 		"    varying vec2 tex; // coords\n"
 
 		"    void main() {\n"
-		"      gl_FragColor = vec4(0, 1.0, 0, 1.0);}"
+		"      gl_FragColor = texture2D(texture, tex);}"
 //		"      vec3 val = texture2D(textureCamera, tex).xyz;\n"
 //		"      vec2 current = vec2(val.x - 0.5, val.y - 0.5);\n"
 //		"      float m = length(current);\n"
@@ -229,6 +230,9 @@ bool setupGraphics(struct engine* engine) {
 	int w = engine->width;
 	int h = engine->height;
 
+	glViewport(0, 0, w, h);
+	checkGlError("glViewport");
+
 	LOGI("setupGraphics(%d, %d)", w, h);
 	engine->gProgramCamera = createProgram(gVertexShaderCamera, gFragmentShaderCamera);
 	if (!engine->gProgramCamera) {
@@ -247,162 +251,120 @@ bool setupGraphics(struct engine* engine) {
 				"s_texture");
 	checkGlError("glGetAttribLocation");
 
-	glViewport(0, 0, w, h);
-	checkGlError("glViewport");
-
 	// setup textureCamera
 	glGenTextures(1, &engine->textureCamera);
 
-	glActiveTexture(GL_TEXTURE0);
-	checkGlError("glActiveTexture");
-	glBindTexture(GL_TEXTURE_2D, engine->textureCamera);
-	checkGlError("glBindTexture");
-
-	// Use textureCamera 0
-	glUniform1i(engine->gvTextureUniformHandleCamera, 0);
-
-	glVertexAttribPointer(engine->gvTextureHandleCamera, 2, GL_FLOAT, GL_FALSE, 0,
-			textureVertices);
-	checkGlError("glVertexAttribPointer_texturehandle init");
-
-	glEnableVertexAttribArray(engine->gvTextureHandleCamera);
-	checkGlError("glEnableVertexAttribArray_textureHandle init");
-
-	//glBindBuffer(GL_ARRAY_BUFFER, engine->gvPositionHandleCamera);
-	glVertexAttribPointer(engine->gvPositionHandleCamera, 3, GL_FLOAT, GL_FALSE, 0,
-			gTriangleVertices);
-	checkGlError("glVertexAttribPointer_positon handle");
-
 	// globe program
-//	engine->globeProgram = createProgram(gVertexShaderGlobe, gFragmentShaderGlobe);
-//	if (!engine->globeProgram) {
-//		LOGE("Could not create program.");
-//		return false;
-//	}
-//	engine->globeModelCoordHandle = glGetAttribLocation(engine->globeProgram,
-//			"modelCoord");
-//	checkGlError("glGetAttribLocation globe modelCoord");
-//	LOGI("modelCoord handle: %i", engine->globeModelCoordHandle);
-//
-//	engine->globeTexCoordHandle = glGetAttribLocation(engine->globeProgram,
-//			"texCoord");
-//	checkGlError("glGetAttribLocation globe texCoord");
-//	LOGI("texCoord handle: %i", engine->globeTexCoordHandle);
-//
-//	engine->globeTextureHandle = glGetAttribLocation(engine->globeProgram,
-//				"texture");
-//	checkGlError("glGetAttribLocationg globe texutre");
-//
-//	engine->modelViewMatrixHandle = glGetUniformLocation(engine->globeProgram,
-//				"ModelViewMatrix");
-//		checkGlError("glGetUniformLocation globe modelViewMatrix");
-//		LOGI("MVM handle: %i", engine->modelViewMatrixHandle);
-//
-//	engine->projectionMatrixHandle = glGetUniformLocation(engine->globeProgram,
-//					"ProjectionMatrix");
-//			checkGlError("glGetUniformLocation globe projectionMatrix");
-//			LOGI("PM handle: %i", engine->projectionMatrixHandle);
-//
-//	glUniform1i(engine->globeTextureHandle, 0);
-//
-//	glGenTextures(1, &engine->globeTexture);
-//
-//	createGlobeVertices(engine);
-//
-//	return true;
+	engine->globeProgram = createProgram(gVertexShaderGlobe, gFragmentShaderGlobe);
+	if (!engine->globeProgram) {
+		LOGE("Could not create program.");
+		return false;
+	}
+
+	engine->globeModelCoordHandle = glGetAttribLocation(engine->globeProgram,
+			"modelCoord");
+	checkGlError("glGetAttribLocation globe modelCoord");
+	LOGI("modelCoord handle: %i", engine->globeModelCoordHandle);
+
+	engine->globeTexCoordHandle = glGetAttribLocation(engine->globeProgram,
+			"texCoord");
+	checkGlError("glGetAttribLocation globe texCoord");
+	LOGI("texCoord handle: %i", engine->globeTexCoordHandle);
+
+	engine->globeTextureHandle = glGetAttribLocation(engine->globeProgram,
+				"texture");
+	checkGlError("glGetAttribLocationg globe texutre");
+
+	engine->modelViewMatrixHandle = glGetUniformLocation(engine->globeProgram,
+				"ModelViewMatrix");
+		checkGlError("glGetUniformLocation globe modelViewMatrix");
+		LOGI("MVM handle: %i", engine->modelViewMatrixHandle);
+
+	engine->projectionMatrixHandle = glGetUniformLocation(engine->globeProgram,
+					"ProjectionMatrix");
+			checkGlError("glGetUniformLocation globe projectionMatrix");
+			LOGI("PM handle: %i", engine->projectionMatrixHandle);
+
+	glUniform1i(engine->globeTextureHandle, 0);
+
+	glGenTextures(1, &engine->globeTexture);
+
+	createGlobeVertices(engine);
+
+	return true;
 }
 
 void createGlobeVertices(engine* engine) {
 	const int latBands = 30, lonBands = 30;
 
-
-
 	std::vector<GLfloat> modelCoords(31 * 31 * 3);
 	std::vector<GLfloat> texCoords(31 * 31 * 2);
 
-	int n = 0, m = 0;
-	for (int i = 0; i <= latBands; ++i) {
-		float theta = (float)i * M_PI / (float)latBands;
-		float sinTheta = sin(theta);
-		float cosTheta = cos(theta);
-		for (int j = 0; j <= lonBands; ++j) {
-			float phi = (float)j * M_PI_2 / (float)lonBands;
-			float sinPhi = sin(phi);
-			float cosPhi = cos(phi);
+	int m = 0, n = 0;
+	for (int latNumber = 0; latNumber <= latBands; latNumber++) {
+		double theta = latNumber * M_PI / latBands;
+		double sinTheta = sin(theta);
+		double cosTheta = cos(theta);
 
-			modelCoords[n] = cosPhi * sinTheta;
-			modelCoords[n + 1] = cosTheta;
-			modelCoords[n + 2] = sinPhi * sinTheta;
+		for (double longNumber = 0; longNumber <= lonBands; longNumber++) {
+			double phi = longNumber * 2 * M_PI/ lonBands;
+			double sinPhi = sin(phi);
+			double cosPhi = cos(phi);
 
+			double x = cosPhi * sinTheta;
+			double y = cosTheta;
+			double z = sinPhi * sinTheta;
+			double u = 1. - ((double)longNumber / (double)lonBands);
+			double v = 1. - ((double)latNumber / (double)latBands);
+
+			modelCoords[n] = x;
+			modelCoords[n + 1] = y;
+			modelCoords[n + 2] = z;
 			n += 3;
 
-			texCoords[m] = 1 - (float)j / (float)lonBands;
-			texCoords[m + 1] = 1 - (float)i / (float)latBands;
+			texCoords[m] = u;
+			texCoords[m + 1] = v;
 
 			m += 2;
 		}
 	}
 
 	std::vector<GLushort> idx(latBands * lonBands * 6);
+	m = 0;
+	for (int latNumber = 0; latNumber < latBands; latNumber++) {
+		for (int longNumber = 0; longNumber < lonBands; longNumber++) {
+			int first = (latNumber * (lonBands + 1)) + longNumber;
+			int second = first + lonBands + 1;
+			idx[m] = first;
+			idx[m+1] = second;
+			idx[m+2] = first + 1;
 
-	n = 0;
-	for (int i = 0; i < latBands; ++i) {
-		for (int j = 0; j < lonBands; ++j) {
-			int fst = i * (lonBands + 1) + j;
-			int snd = fst + lonBands + 1;
-
-			idx[n] = fst;
-			idx[n + 1] = fst + 1;
-			idx[n + 2] = snd;
-			idx[n + 3] = snd;
-			idx[n + 4] = fst + 1;
-			idx[n + 5] = snd + 1;
+			idx[m+3] = second;
+			idx[m+4] = second + 1;
+			idx[m+5] = first + 1;
+			m += 6;
 		}
 	}
 
-	idx[0] = 0;
-	idx[1] = 1;
-	idx[2] = 2;
-	idx[3] = 2;
-	idx[4] = 1;
-	idx[5] = 3;
+//	idx[0] = 0;
+//	idx[1] = 1;
+//	idx[2] = 2;
+//	idx[3] = 1;
+//	idx[4] = 3;
+//	idx[5] = 2;
 
-	engine->globeIndices = idx;
+	for (int i = 500; i < 520; ++i) {
+		LOGI("texCoords[%i] = %f", i, texCoords[i]);
+	}
 
 	LOGI("idx size %i", idx.size());
 	LOGI("model size %i", modelCoords.size());
 	LOGI("tex size %i", texCoords.size());
 
 	engine->globeNumTriangles = idx.size();
-
-	// bind buffers. Not sure if the whole createBuffer/bindBuffer/bufferData is needed here
-//	GLuint handle;
-//	glGenBuffers(1, &handle);
-//	checkGlError("glGenBuffers");
-//	glBindBuffer(GL_ARRAY_BUFFER, handle);
-//	checkGlError("glBindBuffer");
-//	glBufferData(GL_ARRAY_BUFFER, latBands * lonBands * 3, &modelCoords[0], GL_STATIC_DRAW);
-//	checkGlError("glBufferData model");
-
-	glVertexAttribPointer(engine->globeModelCoordHandle, 3, GL_FLOAT, GL_FALSE, 0,
-				gTriangleVertices); //&modelCoords[0]);
-	checkGlError("glVertexAttribPointer globe model coords");
-	glEnableVertexAttribArray(engine->globeModelCoordHandle);
-	checkGlError("glENableVertexAttribArray model");
-
-	// texture
-//	glGenBuffers(1, &handle);
-//	checkGlError("glGenBuffers");
-//	glBindBuffer(GL_ARRAY_BUFFER, handle);
-//	checkGlError("glBindBuffer");
-//	glBufferData(GL_ARRAY_BUFFER, latBands * lonBands * 2, &texCoords[0], GL_STATIC_DRAW);
-//	checkGlError("glBufferData tex");
-
-	glVertexAttribPointer(engine->globeTexCoordHandle, 2, GL_FLOAT, GL_FALSE, 0,
-		&texCoords[0]);
-	checkGlError("glVertexAttribPointer globe tex coords");
-	glEnableVertexAttribArray(engine->globeTexCoordHandle);
-	checkGlError("glENableVertexAttribArray tex");
+	engine->globeIndices = idx;
+	engine->modelCoords = modelCoords;
+	engine->texCoords = texCoords;
 
 	return;
 }
@@ -423,6 +385,9 @@ static void engine_draw_frame(engine* engine, const cv::Mat& frame) {
 	glBindTexture(GL_TEXTURE_2D, engine->textureCamera);
 	checkGlError("glBindTexture");
 
+	// Use textureCamera 0
+	glUniform1i(engine->gvTextureUniformHandleCamera, 0);
+
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
 	// these are necessary to get android to use a non-power-of-2 size texture.
@@ -435,10 +400,19 @@ static void engine_draw_frame(engine* engine, const cv::Mat& frame) {
 			GL_RGBA, GL_UNSIGNED_BYTE, frame.data);
 	checkGlError("glTexImage2D");
 
+	glVertexAttribPointer(engine->gvTextureHandleCamera, 2, GL_FLOAT, GL_FALSE, 0,
+			textureVertices);
+	checkGlError("glVertexAttribPointer_texturehandle init");
 	glEnableVertexAttribArray(engine->gvTextureHandleCamera);
-	checkGlError("glEnableVertexAttribArray_textureHandle");
+	checkGlError("glEnableVertexAttribArray_textureHandle init");
+
+	glVertexAttribPointer(engine->gvPositionHandleCamera, 3, GL_FLOAT, GL_FALSE, 0,
+			gTriangleVertices);
+
+	checkGlError("glVertexAttribPointer_positon handle");
 	glEnableVertexAttribArray(engine->gvPositionHandleCamera);
-	checkGlError("glEnableVertexAttribArray_positionHandle");
+	checkGlError("glEnableVertexAttribArray_positionHandle init");
+
 	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
 	checkGlError("glDrawElements");
 
@@ -448,40 +422,53 @@ static void engine_draw_frame(engine* engine, const cv::Mat& frame) {
 	checkGlError("glDisableVertexAttribArray_positionHandle");
 
 	// then, draw globe on top
-//	glClear(GL_DEPTH_BUFFER_BIT);
-//	checkGlError("glClear");
-//
-//	glUseProgram(engine->globeProgram);
-//	checkGlError("glUseProgram globe");
-//
-//	// set up uniforms
-//	float perspective[16];
-//	perspective_matrix(15.0, (double)engine->width / (double)engine->height, 0.01, 100, perspective);
-//	glUniformMatrix4fv(engine->projectionMatrixHandle, 1, GL_FALSE, perspective);
-//	checkGlError("glUniform projection matrix");
-//
-//	float modelView[16];
-//	translate_matrix(0, 0, -3.732, modelView);
-//	glUniformMatrix4fv(engine->modelViewMatrixHandle, 1, GL_FALSE, modelView);
-//	checkGlError("glUniform ModelView matrix");
-//
-//	// bind texture
+	glClear(GL_DEPTH_BUFFER_BIT);
+	checkGlError("glClear");
+
+	glUseProgram(engine->globeProgram);
+	checkGlError("glUseProgram globe");
+
+	// set up uniforms
+	float perspective[16];
+	perspective_matrix(15.0, (double)engine->width / (double)engine->height, 0.01, 100, perspective);
+//		perspective_matrix(15.0, 1, 0.01, 100, perspective);
+
+	glUniformMatrix4fv(engine->projectionMatrixHandle, 1, GL_FALSE, perspective);
+	checkGlError("glUniform projection matrix");
+
+	float modelView[16];
+	translate_matrix(0, 0, -9.59575, modelView);
+	glUniformMatrix4fv(engine->modelViewMatrixHandle, 1, GL_FALSE, modelView);
+	checkGlError("glUniform ModelView matrix");
+
+	// bind texture
 //	glActiveTexture(GL_TEXTURE0);
 //	checkGlError("glActiveTexture");
 //	glBindTexture(GL_TEXTURE_2D, engine->globeTexture);
 //	checkGlError("glBindTexture");
-//
-//	glEnableVertexAttribArray(engine->globeTexCoordHandle);
-//	checkGlError("glEnableVertexAttribArray texCoord");
-//	glEnableVertexAttribArray(engine->globeModelCoordHandle);
-//	checkGlError("glEnableVertexAttribArray modelCoord");
-//	glDrawElements(GL_TRIANGLES, engine->globeNumTriangles, GL_UNSIGNED_SHORT, &(engine->globeIndices[0]));
-////	glDrawElements(GL_TRIANGLES, 100, GL_UNSIGNED_SHORT, &(engine->globeIndices[0]));
-//	checkGlError("glDrawElements globe");
-//	glDisableVertexAttribArray(engine->globeTexCoordHandle);
-//	checkGlError("glDisableVertexAttribArray texCoord");
-//	glDisableVertexAttribArray(engine->globeModelCoordHandle);
-//	checkGlError("glDisableVertexAttribArray modelCoord");
+
+	glVertexAttribPointer(engine->globeModelCoordHandle, 3, GL_FLOAT, GL_FALSE, 0,
+//			gTriangleVertices); // &(engine->modelCoords[0]));
+			&(engine->modelCoords[0]));
+	checkGlError("glVertexAttribPointer globe model coords");
+	glEnableVertexAttribArray(engine->globeModelCoordHandle);
+	checkGlError("glENableVertexAttribArray model");
+
+	glVertexAttribPointer(engine->globeTexCoordHandle, 2, GL_FLOAT, GL_FALSE, 0,
+		&(engine->texCoords[0]));
+	checkGlError("glVertexAttribPointer globe tex coords");
+	glEnableVertexAttribArray(engine->globeTexCoordHandle);
+	checkGlError("glENableVertexAttribArray tex");
+
+//	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
+//	checkGlError("glDrawElements");
+	glDrawElements(GL_TRIANGLES, engine->globeNumTriangles, GL_UNSIGNED_SHORT, &(engine->globeIndices[0]));
+//	glDrawElements(GL_TRIANGLES, 100, GL_UNSIGNED_SHORT, &(engine->globeIndices[0]));
+	checkGlError("glDrawElements globe");
+	glDisableVertexAttribArray(engine->globeTexCoordHandle);
+	checkGlError("glDisableVertexAttribArray texCoord");
+	glDisableVertexAttribArray(engine->globeModelCoordHandle);
+	checkGlError("glDisableVertexAttribArray modelCoord");
 
 	//LOGI("opengl rendered, swapping buffers");
 	eglSwapBuffers(engine->display, engine->surface);
@@ -547,7 +534,7 @@ static int engine_init_display(struct engine* engine) {
 
 	// Initialize GL state.
 	glEnable(GL_CULL_FACE);
-	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_DEPTH_TEST);
 
 	return 0;
 }

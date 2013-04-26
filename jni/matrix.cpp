@@ -85,8 +85,8 @@ void rotate_then_translate_matrix(double angle, double x, double y, double z, do
     }
 }
 /* 
- * Simulates desktop's glRotatef. The matrix is returned in column-major 
- * order. 
+ * "Simulates desktop's glRotatef" (error?, actually translation).
+ * The matrix is returned in column-major order.
  */
 void translate_matrix(double xt, double yt, double zt, float *T) {
     for (int i = 0; i < 16; i++) {
@@ -97,29 +97,61 @@ void translate_matrix(double xt, double yt, double zt, float *T) {
     T[5] = 1.0;
     T[10] = 1.0;
     T[15] = 1.0;
-    T[3] = xt;
-    T[7] = yt;
-    T[11] = zt;
+    T[12] = xt;
+    T[13] = yt;
+    T[14] = zt;
 }
-/* 
- * Simulates gluPerspectiveMatrix 
- */
-void perspective_matrix(double fovy, double aspect, double znear, double zfar, float *P) {
-    int i;
-    double f;
 
-    f = 1.0/tan(fovy * 0.5);
 
-    for (i = 0; i < 16; i++) {
-        P[i] = 0.0;
-    }
+/**
+* Generates a frustum matrix with the given bounds
+*
+* @param {number} left Left bound of the frustum
+* @param {number} right Right bound of the frustum
+* @param {number} bottom Bottom bound of the frustum
+* @param {number} top Top bound of the frustum
+* @param {number} near Near bound of the frustum
+* @param {number} far Far bound of the frustum
+* @param {mat4} [dest] mat4 frustum matrix will be written into
+*
+*/
+static void frustrum(float left, float right, float bottom, float top, float near, float far, float *dest) {
 
-    P[0] = f / aspect;
-    P[5] = f;
-    P[10] = (znear + zfar) / (znear - zfar);
-    P[11] = -1.0;
-    P[14] = (2.0 * znear * zfar) / (znear - zfar);
-    P[15] = 0.0;
+	float rl = (right - left), tb = (top - bottom), fn = (far - near);
+
+	dest[0] = (near * 2) / rl;
+	dest[1] = 0;
+	dest[2] = 0;
+	dest[3] = 0;
+	dest[4] = 0;
+	dest[5] = (near * 2) / tb;
+	dest[6] = 0;
+	dest[7] = 0;
+	dest[8] = (right + left) / rl;
+	dest[9] = (top + bottom) / tb;
+	dest[10] = -(far + near) / fn;
+	dest[11] = -1;
+	dest[12] = 0;
+	dest[13] = 0;
+	dest[14] = -(far * near * 2) / fn;
+	dest[15] = 0;
+}
+
+
+/**
+* Generates a perspective projection matrix with the given bounds
+*
+* @param {number} fovy Vertical field of view
+* @param {number} aspect Aspect ratio. typically viewport width/height
+* @param {number} near Near bound of the frustum
+* @param {number} far Far bound of the frustum
+* @param {mat4} [dest] mat4 frustum matrix will be written into
+*
+*/
+void perspective_matrix(double fovy, double aspect, double near, double far, float *dest) {
+	float top = near * tan(fovy * M_PI / 360.0),
+	            right = top * aspect;
+	frustrum(-right, right, -top, top, near, far, dest);
 }
 
 /* 

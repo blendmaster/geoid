@@ -8,6 +8,7 @@
 void rotate_matrix(double angle, double x, double y, double z, float *R);
 void rotate_then_translate_matrix(double angle, double x, double y, double z, double xt, double yt, double zt, float *R);
 void translate_matrix(double xt, double yt, double zt, float *T);
+static void frustrum(float left, float right, float bottom, float top, float near, float far, float *dest);
 void perspective_matrix(double fovy, double aspect, double znear, double zfar, float *P);
 void multiply_matrix(float *A, float *B, float *C);
 
