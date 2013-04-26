@@ -88,6 +88,8 @@ setup-buffers = !->
         fst + 1
         snd + 1
 
+  console.log 'idx size' idx.length, 'model size' modelCoords.length, 'tex size' texCoords.length
+
   buffers <<<
     modelCoord : bind-buffer gl, \modelCoord new Float32Array(modelCoords), 3
     texCoord   : bind-buffer gl, \texCoord new Float32Array(texCoords), 2

@@ -21,6 +21,8 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
+#include "matrix.h"
+
 #define  LOG_TAG    "geoid_native"
 #define  LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG,LOG_TAG,__VA_ARGS__)
 #define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
@@ -33,18 +35,26 @@ struct engine {
 
 	bool hasFocus;
 
-	bool grabFeatures;
-	bool trained;
-
 	EGLDisplay display;
 	EGLSurface surface;
 	EGLContext context;
 	int32_t width;
 	int32_t height;
 
-	GLuint gProgram;
-	GLuint gvPositionHandle, gvTextureHandle, gvTextureUniformHandle;
-	GLuint texture;
+	GLuint gProgramCamera;
+	GLuint gvPositionHandleCamera, gvTextureHandleCamera, gvTextureUniformHandleCamera;
+	GLuint textureCamera;
+
+	GLuint globeProgram;
+	GLuint globeModelCoordHandle;
+	GLuint globeTexCoordHandle;
+	GLuint projectionMatrixHandle;
+	GLuint modelViewMatrixHandle;
+	GLuint globeTexture;
+	GLuint globeTextureHandle;
+
+	GLuint globeNumTriangles;
+	std::vector<GLushort> globeIndices;
 };
 
 static void printGLString(const char *name, GLenum s) {
@@ -54,11 +64,35 @@ static void printGLString(const char *name, GLenum s) {
 
 static void checkGlError(const char* op) {
 	for (GLint error = glGetError(); error; error = glGetError()) {
-		LOGI("after %s() glError (0x%x)\n", op, error);
+		LOGE("after %s() glError (0x%x)\n", op, error);
 	}
 }
 
-static const char gVertexShader[] =
+static const GLushort indices[] = { 0, 1, 2, 1, 3, 2 };
+
+static const GLfloat gTriangleVertices[] = {
+		0.8, 1.0, 0.0,
+		-0.8, 1.0, 0.0,
+		0.8, -1.0, 0.0,
+		-0.8, -1.0, 0.0};
+//static const GLfloat gTriangleVertices[] = {
+//		-0.8, -1, 0,
+//		0.8, -1, 0,
+//		0.8, 1, 0,
+//		-0.8, 1, 0};
+
+static const GLfloat textureVertices[] = {
+		1.0, 0.0,
+		0.0, 0.0,
+		1.0, 1.0,
+		0.0, 1.0 };
+//static const GLfloat textureVertices[] = {
+//		1.0, 0.0,
+//		1.0, 0.5,
+//		1.0, 1.0,
+//		1.0, 0.0 };
+
+static const char gVertexShaderCamera[] =
 		"attribute vec4 a_position;   \n"
      //   "attribute vec3 a_normal;     \n"
         "attribute vec2 a_texCoord;   \n"
@@ -71,7 +105,7 @@ static const char gVertexShader[] =
         "   v_texCoord = a_texCoord;  \n"
         "}                            \n";
 
-static const char gFragmentShader[] =
+static const char gFragmentShaderCamera[] =
                         "precision mediump float;                            \n"
                         "varying vec2 v_texCoord;                            \n"
                        // "varying vec3 v_normal; \n"
@@ -80,6 +114,46 @@ static const char gFragmentShader[] =
                         "{                                                   \n"
 						"  gl_FragColor = texture2D( s_texture, v_texCoord );\n"
                         "}                                                   \n";
+
+static const char gVertexShaderGlobe[] =
+		    "precision mediump float;\n"
+
+		    "attribute vec3 modelCoord;\n"
+		    "attribute vec2 texCoord;\n"
+
+		    "varying vec2 tex;\n"
+
+		    "uniform mat4 ModelViewMatrix;\n"
+		    "uniform mat4 ProjectionMatrix;\n"
+
+		    "void main() {\n"
+		      "tex = texCoord;\n"
+
+		      "vec4 WorldCoord = ModelViewMatrix * vec4(modelCoord,1.0);\n"
+
+		      "gl_Position = ProjectionMatrix * WorldCoord;\n"
+		    "}";
+
+static const char gFragmentShaderGlobe[] =
+		"    precision mediump float;\n"
+
+		"    uniform sampler2D texture;\n"
+
+		"    varying vec2 tex; // coords\n"
+
+		"    void main() {\n"
+		"      gl_FragColor = vec4(0, 1.0, 0, 1.0);}"
+//		"      vec3 val = texture2D(textureCamera, tex).xyz;\n"
+//		"      vec2 current = vec2(val.x - 0.5, val.y - 0.5);\n"
+//		"      float m = length(current);\n"
+//
+//		"      bool water = val.z != 0.0;\n"
+//		"      if (water) {\n"
+//		"        gl_FragColor = vec4(0, m, 0, 1.0);\n"
+//		"      } else{\n"
+//		"        gl_FragColor = vec4(0, 0, 0, 1.0);\n"
+//		"      }\n"
+		;
 
 GLuint loadShader(GLenum shaderType, const char* pSource) {
 	GLuint shader = glCreateShader(shaderType);
@@ -144,6 +218,8 @@ GLuint createProgram(const char* pVertexSource, const char* pFragmentSource) {
 	return program;
 }
 
+void createGlobeVertices(engine* engine);
+
 bool setupGraphics(struct engine* engine) {
 	printGLString("Version", GL_VERSION);
 	printGLString("Vendor", GL_VENDOR);
@@ -154,57 +230,264 @@ bool setupGraphics(struct engine* engine) {
 	int h = engine->height;
 
 	LOGI("setupGraphics(%d, %d)", w, h);
-	engine->gProgram = createProgram(gVertexShader, gFragmentShader);
-	if (!engine->gProgram) {
+	engine->gProgramCamera = createProgram(gVertexShaderCamera, gFragmentShaderCamera);
+	if (!engine->gProgramCamera) {
 		LOGE("Could not create program.");
 		return false;
 	}
-	engine->gvPositionHandle = glGetAttribLocation(engine->gProgram,
+	engine->gvPositionHandleCamera = glGetAttribLocation(engine->gProgramCamera,
 			"a_position");
 	checkGlError("glGetAttribLocation");
-	LOGI("glGetAttribLocation(\"a_position\") = %d\n", engine->gvPositionHandle);
 
-	engine->gvTextureHandle = glGetAttribLocation(engine->gProgram,
+	engine->gvTextureHandleCamera = glGetAttribLocation(engine->gProgramCamera,
 			"a_texCoord");
 	checkGlError("glGetAttribLocation");
-	LOGI(
-			"glGetAttribLocation(\"a_texCoord\") = %d\n", engine->gvTextureHandle);
 
-	engine->gvTextureUniformHandle = glGetAttribLocation(engine->gProgram,
+	engine->gvTextureUniformHandleCamera = glGetAttribLocation(engine->gProgramCamera,
 				"s_texture");
-		checkGlError("glGetAttribLocation");
-		LOGI(
-				"glGetAttribLocatFion(\"s_texture\") = %d\n", engine->gvTextureHandle);
+	checkGlError("glGetAttribLocation");
 
 	glViewport(0, 0, w, h);
 	checkGlError("glViewport");
 
-	// setup texture
-	glGenTextures(1, &engine->texture);
+	// setup textureCamera
+	glGenTextures(1, &engine->textureCamera);
 
 	glActiveTexture(GL_TEXTURE0);
 	checkGlError("glActiveTexture");
-	glBindTexture(GL_TEXTURE_2D, engine->texture);
+	glBindTexture(GL_TEXTURE_2D, engine->textureCamera);
 	checkGlError("glBindTexture");
 
-	return true;
+	// Use textureCamera 0
+	glUniform1i(engine->gvTextureUniformHandleCamera, 0);
+
+	glVertexAttribPointer(engine->gvTextureHandleCamera, 2, GL_FLOAT, GL_FALSE, 0,
+			textureVertices);
+	checkGlError("glVertexAttribPointer_texturehandle init");
+
+	glEnableVertexAttribArray(engine->gvTextureHandleCamera);
+	checkGlError("glEnableVertexAttribArray_textureHandle init");
+
+	//glBindBuffer(GL_ARRAY_BUFFER, engine->gvPositionHandleCamera);
+	glVertexAttribPointer(engine->gvPositionHandleCamera, 3, GL_FLOAT, GL_FALSE, 0,
+			gTriangleVertices);
+	checkGlError("glVertexAttribPointer_positon handle");
+
+	// globe program
+//	engine->globeProgram = createProgram(gVertexShaderGlobe, gFragmentShaderGlobe);
+//	if (!engine->globeProgram) {
+//		LOGE("Could not create program.");
+//		return false;
+//	}
+//	engine->globeModelCoordHandle = glGetAttribLocation(engine->globeProgram,
+//			"modelCoord");
+//	checkGlError("glGetAttribLocation globe modelCoord");
+//	LOGI("modelCoord handle: %i", engine->globeModelCoordHandle);
+//
+//	engine->globeTexCoordHandle = glGetAttribLocation(engine->globeProgram,
+//			"texCoord");
+//	checkGlError("glGetAttribLocation globe texCoord");
+//	LOGI("texCoord handle: %i", engine->globeTexCoordHandle);
+//
+//	engine->globeTextureHandle = glGetAttribLocation(engine->globeProgram,
+//				"texture");
+//	checkGlError("glGetAttribLocationg globe texutre");
+//
+//	engine->modelViewMatrixHandle = glGetUniformLocation(engine->globeProgram,
+//				"ModelViewMatrix");
+//		checkGlError("glGetUniformLocation globe modelViewMatrix");
+//		LOGI("MVM handle: %i", engine->modelViewMatrixHandle);
+//
+//	engine->projectionMatrixHandle = glGetUniformLocation(engine->globeProgram,
+//					"ProjectionMatrix");
+//			checkGlError("glGetUniformLocation globe projectionMatrix");
+//			LOGI("PM handle: %i", engine->projectionMatrixHandle);
+//
+//	glUniform1i(engine->globeTextureHandle, 0);
+//
+//	glGenTextures(1, &engine->globeTexture);
+//
+//	createGlobeVertices(engine);
+//
+//	return true;
+}
+
+void createGlobeVertices(engine* engine) {
+	const int latBands = 30, lonBands = 30;
+
+
+
+	std::vector<GLfloat> modelCoords(31 * 31 * 3);
+	std::vector<GLfloat> texCoords(31 * 31 * 2);
+
+	int n = 0, m = 0;
+	for (int i = 0; i <= latBands; ++i) {
+		float theta = (float)i * M_PI / (float)latBands;
+		float sinTheta = sin(theta);
+		float cosTheta = cos(theta);
+		for (int j = 0; j <= lonBands; ++j) {
+			float phi = (float)j * M_PI_2 / (float)lonBands;
+			float sinPhi = sin(phi);
+			float cosPhi = cos(phi);
+
+			modelCoords[n] = cosPhi * sinTheta;
+			modelCoords[n + 1] = cosTheta;
+			modelCoords[n + 2] = sinPhi * sinTheta;
+
+			n += 3;
+
+			texCoords[m] = 1 - (float)j / (float)lonBands;
+			texCoords[m + 1] = 1 - (float)i / (float)latBands;
+
+			m += 2;
+		}
+	}
+
+	std::vector<GLushort> idx(latBands * lonBands * 6);
+
+	n = 0;
+	for (int i = 0; i < latBands; ++i) {
+		for (int j = 0; j < lonBands; ++j) {
+			int fst = i * (lonBands + 1) + j;
+			int snd = fst + lonBands + 1;
+
+			idx[n] = fst;
+			idx[n + 1] = fst + 1;
+			idx[n + 2] = snd;
+			idx[n + 3] = snd;
+			idx[n + 4] = fst + 1;
+			idx[n + 5] = snd + 1;
+		}
+	}
+
+	idx[0] = 0;
+	idx[1] = 1;
+	idx[2] = 2;
+	idx[3] = 2;
+	idx[4] = 1;
+	idx[5] = 3;
+
+	engine->globeIndices = idx;
+
+	LOGI("idx size %i", idx.size());
+	LOGI("model size %i", modelCoords.size());
+	LOGI("tex size %i", texCoords.size());
+
+	engine->globeNumTriangles = idx.size();
+
+	// bind buffers. Not sure if the whole createBuffer/bindBuffer/bufferData is needed here
+//	GLuint handle;
+//	glGenBuffers(1, &handle);
+//	checkGlError("glGenBuffers");
+//	glBindBuffer(GL_ARRAY_BUFFER, handle);
+//	checkGlError("glBindBuffer");
+//	glBufferData(GL_ARRAY_BUFFER, latBands * lonBands * 3, &modelCoords[0], GL_STATIC_DRAW);
+//	checkGlError("glBufferData model");
+
+	glVertexAttribPointer(engine->globeModelCoordHandle, 3, GL_FLOAT, GL_FALSE, 0,
+				gTriangleVertices); //&modelCoords[0]);
+	checkGlError("glVertexAttribPointer globe model coords");
+	glEnableVertexAttribArray(engine->globeModelCoordHandle);
+	checkGlError("glENableVertexAttribArray model");
+
+	// texture
+//	glGenBuffers(1, &handle);
+//	checkGlError("glGenBuffers");
+//	glBindBuffer(GL_ARRAY_BUFFER, handle);
+//	checkGlError("glBindBuffer");
+//	glBufferData(GL_ARRAY_BUFFER, latBands * lonBands * 2, &texCoords[0], GL_STATIC_DRAW);
+//	checkGlError("glBufferData tex");
+
+	glVertexAttribPointer(engine->globeTexCoordHandle, 2, GL_FLOAT, GL_FALSE, 0,
+		&texCoords[0]);
+	checkGlError("glVertexAttribPointer globe tex coords");
+	glEnableVertexAttribArray(engine->globeTexCoordHandle);
+	checkGlError("glENableVertexAttribArray tex");
+
+	return;
+}
+
+static void engine_draw_frame(engine* engine, const cv::Mat& frame) {
+	if (engine->app->window == NULL)
+		return;
+
+	glClearColor(0, 0, 0, 1.0f);
+	checkGlError("glClearColor");
+	glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+	checkGlError("glClear");
+	glUseProgram(engine->gProgramCamera);
+	checkGlError("glUseProgram");
+
+	glActiveTexture(GL_TEXTURE0);
+	checkGlError("glActiveTexture");
+	glBindTexture(GL_TEXTURE_2D, engine->textureCamera);
+	checkGlError("glBindTexture");
+
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+	// these are necessary to get android to use a non-power-of-2 size texture.
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.cols, frame.rows, 0,
+			GL_RGBA, GL_UNSIGNED_BYTE, frame.data);
+	checkGlError("glTexImage2D");
+
+	glEnableVertexAttribArray(engine->gvTextureHandleCamera);
+	checkGlError("glEnableVertexAttribArray_textureHandle");
+	glEnableVertexAttribArray(engine->gvPositionHandleCamera);
+	checkGlError("glEnableVertexAttribArray_positionHandle");
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
+	checkGlError("glDrawElements");
+
+	glDisableVertexAttribArray(engine->gvTextureHandleCamera);
+	checkGlError("glDisableVertexAttribArray_textureHandle");
+	glDisableVertexAttribArray(engine->gvPositionHandleCamera);
+	checkGlError("glDisableVertexAttribArray_positionHandle");
+
+	// then, draw globe on top
+//	glClear(GL_DEPTH_BUFFER_BIT);
+//	checkGlError("glClear");
+//
+//	glUseProgram(engine->globeProgram);
+//	checkGlError("glUseProgram globe");
+//
+//	// set up uniforms
+//	float perspective[16];
+//	perspective_matrix(15.0, (double)engine->width / (double)engine->height, 0.01, 100, perspective);
+//	glUniformMatrix4fv(engine->projectionMatrixHandle, 1, GL_FALSE, perspective);
+//	checkGlError("glUniform projection matrix");
+//
+//	float modelView[16];
+//	translate_matrix(0, 0, -3.732, modelView);
+//	glUniformMatrix4fv(engine->modelViewMatrixHandle, 1, GL_FALSE, modelView);
+//	checkGlError("glUniform ModelView matrix");
+//
+//	// bind texture
+//	glActiveTexture(GL_TEXTURE0);
+//	checkGlError("glActiveTexture");
+//	glBindTexture(GL_TEXTURE_2D, engine->globeTexture);
+//	checkGlError("glBindTexture");
+//
+//	glEnableVertexAttribArray(engine->globeTexCoordHandle);
+//	checkGlError("glEnableVertexAttribArray texCoord");
+//	glEnableVertexAttribArray(engine->globeModelCoordHandle);
+//	checkGlError("glEnableVertexAttribArray modelCoord");
+//	glDrawElements(GL_TRIANGLES, engine->globeNumTriangles, GL_UNSIGNED_SHORT, &(engine->globeIndices[0]));
+////	glDrawElements(GL_TRIANGLES, 100, GL_UNSIGNED_SHORT, &(engine->globeIndices[0]));
+//	checkGlError("glDrawElements globe");
+//	glDisableVertexAttribArray(engine->globeTexCoordHandle);
+//	checkGlError("glDisableVertexAttribArray texCoord");
+//	glDisableVertexAttribArray(engine->globeModelCoordHandle);
+//	checkGlError("glDisableVertexAttribArray modelCoord");
+
+	//LOGI("opengl rendered, swapping buffers");
+	eglSwapBuffers(engine->display, engine->surface);
 }
 
 // XXX fudging the X's here, since the camera preview is narrower than my nexus s' screen size.
-const GLfloat gTriangleVertices[] = {
-		0.8, 1.0,
-		-0.8, 1.0,
-		0.8, -1.0,
-		-0.8, -1.0};
-
-const GLfloat textureVertices[] = {
-		1.0, 0.0,
-		0.0, 0.0,
-		1.0, 1.0,
-		0.0, 1.0 };
-
-const GLuint indices[] = { 0, 1, 2, 1, 2, 3};
-
 /**
  * Initialize an EGL context for the current display.
  */
@@ -326,75 +609,19 @@ static cv::Size calc_optimal_camera_resolution(const char* supported, int width,
 	return cv::Size(frame_width, frame_height);
 }
 
-static void engine_draw_frame(engine* engine, const cv::Mat& frame) {
-	if (engine->app->window == NULL)
-		return;
-
-	glClearColor(0, 0, 0, 1.0f);
-	checkGlError("glClearColor");
-	glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-	checkGlError("glClear");
-	glUseProgram(engine->gProgram);
-	checkGlError("glUseProgram");
-
-	glActiveTexture(GL_TEXTURE0);
-	checkGlError("glActiveTexture");
-	glBindTexture(GL_TEXTURE_2D, engine->texture);
-	checkGlError("glBindTexture");
-
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-	// these are necessary to get android to use a non-power-of-2 size texture.
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.cols, frame.rows, 0,
-			GL_RGBA, GL_UNSIGNED_BYTE, frame.data);
-	checkGlError("glTexImage2D");
-
-	// Use texture 0
-	glUniform1i(engine->gvTextureUniformHandle, 0);
-
-	glVertexAttribPointer(engine->gvTextureHandle, 2, GL_FLOAT, GL_FALSE, 0,
-			textureVertices);
-	checkGlError("glVertexAttribPointer_texturehandle");
-
-	glEnableVertexAttribArray(engine->gvTextureHandle);
-	checkGlError("glEnableVertexAttribArray_textureHandle");
-
-	//glBindBuffer(GL_ARRAY_BUFFER, engine->gvPositionHandle);
-	glVertexAttribPointer(engine->gvPositionHandle, 2, GL_FLOAT, GL_FALSE, 0,
-			gTriangleVertices);
-	checkGlError("glVertexAttribPointer_positon handle");
-
-	glEnableVertexAttribArray(engine->gvPositionHandle);
-	checkGlError("glEnableVertexAttribArray_positionHandle");
-
-//	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-	GLushort indices[] = { 0, 1, 2, 3 };
-	glDrawElements(GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_SHORT, indices);
-	//glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
-	checkGlError("glDrawArrays");
-
-	//LOGI("opengl rendered, swapping buffers");
-	eglSwapBuffers(engine->display, engine->surface);
-}
-
 /**
  * Process the next input event.
  */
-static int32_t engine_handle_input(struct android_app* app,
-		AInputEvent* event) {
-	struct engine* engine = (struct engine*) app->userData;
-	if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
-		// grab next frame's features
-		engine->grabFeatures = true;
-		return 1;
-	}
-	return 0;
-}
+//static int32_t engine_handle_input(struct android_app* app,
+//		AInputEvent* event) {
+////	struct engine* engine = (struct engine*) app->userData;
+////	if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
+////		// grab next frame's features
+////		engine->grabFeatures = true;
+////		return 1;
+////	}
+//	return 0;
+//}
 
 static void engine_handle_cmd(android_app* app, int32_t cmd) {
 	struct engine* engine = (struct engine*) app->userData;
@@ -477,30 +704,19 @@ void android_main(android_app* app) {
 	memset(&engine, 0, sizeof(engine));
 	app->userData = &engine;
 	app->onAppCmd = engine_handle_cmd;
-	app->onInputEvent = engine_handle_input;
+//	app->onInputEvent = engine_handle_input;
 	engine.app = app;
 
 	float fps = 0;
 	cv::Mat drawing_frame;
 	std::queue<int64> time_queue;
 
-	cv::ORB orb(50, 2, 8, 31, 0, 2, cv::ORB::FAST_SCORE, 31);
-	cv::Mat keypoints;
-	cv::Mat trainDescriptors, queryDescriptors;
-
-	cv::Scalar textColor(0, 255, 0, 255), keypointColor(255, 255, 255);
-
-	cv::BFMatcher matcher;
-
 	cv::Mat mask = cv::Mat::zeros(480, 640, CV_8U);
-	// training mask matching the one drawn on screen
-	cv::circle(mask, cv::Point(320, 240), 200, cv::Scalar(255), -1);
+	cv::Scalar textColor(0, 255, 0);
 
-	cv::Mat emptyMask;
+	cv::Mat thresholded;
 
-	engine.grabFeatures = false;
-	engine.trained = false;
-
+	std::vector<cv::Mat> hsv;
 	// loop waiting for stuff to do.
 	while (1) {
 		// Read all pending events.
@@ -536,52 +752,13 @@ void android_main(android_app* app) {
 						CV_CAP_ANDROID_COLOR_FRAME_RGBA);
 
 			cv::cvtColor(drawing_frame, drawing_frame, cv::COLOR_RGBA2RGB);
-
-			// my stuff
-			std::vector<cv::KeyPoint> keypoints;
-
-			if (engine.grabFeatures) {
-				orb(drawing_frame, mask, keypoints, trainDescriptors);
-
-				engine.grabFeatures = false;
-				engine.trained = true;
-
-				LOGI("got training descriptors!");
-
-				// show keypoints
-				cv::drawKeypoints(drawing_frame, keypoints, drawing_frame);
-			} else if (engine.trained) {
-				orb(drawing_frame, emptyMask, keypoints, queryDescriptors);
-
-				std::vector<cv::DMatch> matches;
-				matcher.match(queryDescriptors, trainDescriptors, matches);
-
-				float min = INFINITY;
-				for (int i = 0; i < matches.size(); ++i) {
-					if (matches[i].distance < min) {
-						min = matches[i].distance;
-					}
-				}
-
-				float threshold = 2 * min;
-
-				for (int i = 0; i < matches.size(); ++i) {
-					cv::KeyPoint keypoint = keypoints[matches[i].queryIdx];
-					if (matches[i].distance < threshold) {
-						char buf[4];
-						sprintf(buf, "%d", matches[i].trainIdx);
-						cv::putText(drawing_frame, std::string(buf),
-								keypoint.pt, cv::FONT_HERSHEY_PLAIN, 1,
-								keypointColor);
-					}
-				}
-			} else {
-				// show keypoints
-				cv::drawKeypoints(drawing_frame, keypoints, drawing_frame);
-			}
-
-			// draw calibration circle
-			cv::circle(drawing_frame, cv::Point(320, 240), 200, textColor, 1);
+//			cv::cvtColor(drawing_frame, drawing_frame, cv::COLOR_RGB2HSV);
+//
+//			cv::split(drawing_frame, hsv);
+//
+//			cv::threshold(hsv[2], thresholded, 40, 255, cv::THRESH_BINARY);
+//
+//			cv::cvtColor(thresholded, drawing_frame, cv::COLOR_GRAY2RGB);
 
 			char buffer[256];
 			sprintf(buffer, "Display performance: %dx%d @ %.3f",
@@ -589,10 +766,9 @@ void android_main(android_app* app) {
 			cv::putText(drawing_frame, std::string(buffer), cv::Point(8, 20),
 					cv::FONT_HERSHEY_COMPLEX_SMALL, 1, textColor);
 
+//			cv::cvtColor(drawing_frame, drawing_frame, cv::COLOR_RGBA2RGB);
 			cv::cvtColor(drawing_frame, drawing_frame, cv::COLOR_RGB2RGBA);
 			engine_draw_frame(&engine, drawing_frame);
-
-//			engine_draw_frame(&engine, mask);
 		}
 
 		if (time_queue.size() >= 2)

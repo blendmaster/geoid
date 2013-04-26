@@ -68,6 +68,7 @@ original commented source there. */
         idx.push(fst, fst + 1, snd, snd, fst + 1, snd + 1);
       }
     }
+    console.log('idx size', idx.length, 'model size', modelCoords.length, 'tex size', texCoords.length);
     buffers.modelCoord = bindBuffer(gl, 'modelCoord', new Float32Array(modelCoords), 3);
     buffers.texCoord = bindBuffer(gl, 'texCoord', new Float32Array(texCoords), 2);
     buffers.idx = (x1$ = gl.createBuffer(), gl.bindBuffer(ELEMENT_ARRAY_BUFFER, x1$), gl.bufferData(ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), STATIC_DRAW), x1$);
