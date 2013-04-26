@@ -56,6 +56,9 @@ struct engine {
 	GLuint globeNumTriangles;
 	std::vector<GLushort> globeIndices;
 	std::vector<GLfloat> texCoords, modelCoords;
+
+	//quick animation
+	double angle;
 };
 
 static void printGLString(const char *name, GLenum s) {
@@ -314,8 +317,8 @@ void createGlobeVertices(engine* engine) {
 			double x = cosPhi * sinTheta;
 			double y = cosTheta;
 			double z = sinPhi * sinTheta;
-			double u = 1. - ((double)longNumber / (double)lonBands);
-			double v = 1. - ((double)latNumber / (double)latBands);
+			double u = ((double)longNumber / (double)lonBands);
+			double v = ((double)latNumber / (double)latBands);
 
 			modelCoords[n] = x;
 			modelCoords[n + 1] = y;
@@ -438,6 +441,8 @@ static void engine_draw_frame(engine* engine, const cv::Mat& frame) {
 
 	float modelView[16];
 	translate_matrix(0, 0, -9.59575, modelView);
+	rotate_matrix(engine->angle, -0.3, 1, 0, modelView);
+	engine->angle += .1;
 	glUniformMatrix4fv(engine->modelViewMatrixHandle, 1, GL_FALSE, modelView);
 	checkGlError("glUniform ModelView matrix");
 
@@ -663,6 +668,8 @@ static void engine_handle_cmd(android_app* app, int32_t cmd) {
 
 			engine_init_display(engine);
 			setupGraphics(engine);
+
+			engine->angle = 0.0;
 		}
 		break;
 	case APP_CMD_GAINED_FOCUS:

@@ -8,43 +8,54 @@
 
 #include "matrix.h"
 
-/* 
- * Simulates desktop's glRotatef. The matrix is returned in column-major 
- * order. 
- */
-void rotate_matrix(double angle, double x, double y, double z, float *R) {
-    double radians, c, s, c1, u[3], length;
-    int i, j;
+/**
+* Rotates a matrix by the given angle around the specified axis (from gl-matrix 1.3.7)
+*
+* @param {number} angle Angle (in radians) to rotate
+* @param {x, y, z} the axis to rotate around
+* @param {mat4} [dest] mat4 receiving operation result.
+*/
+void rotate_matrix(double angle, double x, double y, double z, float *dest) {
 
-    radians = (angle * M_PI) / 180.0;
+	double len = sqrt(x * x + y * y + z * z);
 
-    c = cos(radians);
-    s = sin(radians);
+	if (!len) { return ; }
+	if (len != 1.) {
+		len = 1. / len;
+		x *= len;
+		y *= len;
+		z *= len;
+	}
 
-    c1 = 1.0 - cos(radians);
+	double s = sin(angle);
+	double c = cos(angle);
+	double t = 1 - c;
 
-    length = sqrt(x * x + y * y + z * z);
+	float a00 = dest[0]; float a01 = dest[1]; float a02 = dest[2]; float a03 = dest[3];
+	float a10 = dest[4]; float a11 = dest[5]; float a12 = dest[6]; float a13 = dest[7];
+	float a20 = dest[8]; float a21 = dest[9]; float a22 = dest[10]; float a23 = dest[11];
 
-    u[0] = x / length;
-    u[1] = y / length;
-    u[2] = z / length;
+	// Construct the elements of the rotation matrix
+	float b00 = x * x * t + c; float b01 = y * x * t + z * s;float  b02 = z * x * t - y * s;
+	float b10 = x * y * t - z * s; float b11 = y * y * t + c; float b12 = z * y * t + x * s;
+	float b20 = x * z * t + y * s;float  b21 = y * z * t - x * s; float b22 = z * z * t + c;
 
-    for (i = 0; i < 16; i++) {
-        R[i] = 0.0;
-    }
+	// Perform rotation-specific matrix multiplication
+	dest[0] = a00 * b00 + a10 * b01 + a20 * b02;
+	dest[1] = a01 * b00 + a11 * b01 + a21 * b02;
+	dest[2] = a02 * b00 + a12 * b01 + a22 * b02;
+	dest[3] = a03 * b00 + a13 * b01 + a23 * b02;
 
-    R[15] = 1.0;
+	dest[4] = a00 * b10 + a10 * b11 + a20 * b12;
+	dest[5] = a01 * b10 + a11 * b11 + a21 * b12;
+	dest[6] = a02 * b10 + a12 * b11 + a22 * b12;
+	dest[7] = a03 * b10 + a13 * b11 + a23 * b12;
 
-    for (i = 0; i < 3; i++) {
-        R[i * 4 + (i + 1) % 3] = u[(i + 2) % 3] * s;
-        R[i * 4 + (i + 2) % 3] = -u[(i + 1) % 3] * s;
-    }
-
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < 3; j++) {
-            R[i * 4 + j] += c1 * u[i] * u[j] + (i == j ? c : 0.0);
-        }
-    }
+	dest[8] = a00 * b20 + a10 * b21 + a20 * b22;
+	dest[9] = a01 * b20 + a11 * b21 + a21 * b22;
+	dest[10] = a02 * b20 + a12 * b21 + a22 * b22;
+	dest[11] = a03 * b20 + a13 * b21 + a23 * b22;
+	return;
 }
 
 void rotate_then_translate_matrix(double angle, double x, double y, double z, double xt, double yt, double zt, float *R) {
