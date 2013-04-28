@@ -316,7 +316,7 @@ camera_extrinsics = np.linalg.inv(
 #print(np.dot(camera_intrinsics, camera_extrinsics))
 
 # radius, x, y, z, xrot (around x axis), yrot, zrot
-globe_pose = (5, 0, 0, 30, 30, 30, 0)
+globe_pose = (1, 0, 0, 30, 30, 30, 0)
 
 # points on a globe by latitude and longitude, and color (rgb)
 points = [
@@ -357,7 +357,7 @@ cv2.createTrackbar('s', 'camera', 0, 255, nothing)
 cv2.createTrackbar('sm', 'camera', 255, 255, nothing)
 cv2.createTrackbar('v', 'camera', 0, 255, nothing)
 cv2.createTrackbar('vm', 'camera', 255, 255, nothing)
-cv2.createTrackbar('op', 'camera', 5, 20, nothing)
+cv2.createTrackbar('op', 'camera', 2, 20, nothing)
 
 #detector = cv2.ORB( nfeatures = 1000 )
 #FLANN_INDEX_KDTREE = 1
@@ -372,9 +372,9 @@ cv2.createTrackbar('op', 'camera', 5, 20, nothing)
 
 # thresholds
 blue = ((102, 60, 127), (112, 255, 255))
-green = ((56, 60, 127), (87, 255, 255))
-orange = ((3, 60, 127), (13, 255, 255))
-yellow = ((10, 60, 127), (30, 255, 255))
+green = ((56, 60, 127), (95, 255, 255))
+orange = ((0, 60, 127), (10, 255, 255))
+yellow = ((17, 100, 127), (30, 255, 255))
 red = ((0, 60, 127), (3, 255, 255))
 
 def find(hsv, color_def):
@@ -424,7 +424,7 @@ while True:
   op = cv2.getTrackbarPos('op', 'camera')
   if op < 1:
     op = 1
-  
+
   thresh = cv2.inRange(hsv, (h, s, v), (hm, sm, vm))
 
   st = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (op, op))
@@ -433,43 +433,92 @@ while True:
   img[opened == 0] = (0, 0, 0)
 
   vis = img
-  
+
+  radius, gx, gy, gz, _, _, _ = globe_pose
+
+  # model globe pose
+  model_globe = (radius, 0, 0, 0, 0, 0, 0)
+
+  image_points = []
+  model_points = []
+
   f_blue = find(hsv, blue)
   for point in f_blue:
     cv2.circle(img, point, 1, (255, 0, 0), -1)
     draw_str(img, point, 'blue')
+
+    lat, lon = (40.7142, -74.0064) # new york
+    x, y, z, _ = surface_point(lat, lon, model_globe)
+
+    model_points.append([x, y, z])
+    image_points.append([point[0], point[1]])
+    break
+
   f_green = find(hsv, green)
   for point in f_green:
     cv2.circle(img, point, 1, (0,255, 0), -1)
     draw_str(img, point, 'green')
+
+    lat, lon = (31.7833, 35.2167) # jerusalem
+    x, y, z, _ = surface_point(lat, lon, model_globe)
+
+    model_points.append([x, y, z])
+    image_points.append([point[0], point[1]])
+    break
   f_yellow = find(hsv, yellow)
   for point in f_yellow:
     cv2.circle(img, point, 1, (0,255, 255), -1)
     draw_str(img, point, 'yellow')
+
+    lat, lon = (51.5171, -0.1062) # london
+    x, y, z, _ = surface_point(lat, lon, model_globe)
+
+    model_points.append([x, y, z])
+    image_points.append([point[0], point[1]])
+    break
   f_orange = find(hsv, orange)
   for point in f_orange:
     cv2.circle(img, point, 1, (0, 127, 255), -1)
     draw_str(img, point, 'orange')
 
-  #for i, contour in enumerate(contours):
-    #m = cv2.moments(contour)
+    lat, lon = (33.5992, -7.6200) # casablanca
+    x, y, z, _ = surface_point(lat, lon, model_globe)
 
-    #if m['m00'] == 0:
-      #continue
+    model_points.append([x, y, z])
+    image_points.append([point[0], point[1]])
+    break
 
-    #xim, yim = ( m['m10']/m['m00'],m['m01']/m['m00'] )
-    #cv2.circle(img, (int(xim), int(yim)), 1, (255, 0, 0), -1)
 
-    ## find average color in original image
-    #mask = np.zeros_like(thresholded, dtype=np.uint8)
-    #cv2.drawContours(mask, contours, i, 1, -1)
-    #h, s, v, _ = cv2.mean(saturation, mask)
+  if len(image_points) == 4:
+    obj = np.array(model_points, dtype=np.float32)
+    im = np.array(image_points, dtype=np.float32)
 
-    #draw_str(img, (int(xim), int(yim)), '%.1f, %.1f, %.1f' % (h, s, v))
+    retval, rvec, tvec = cv2.solvePnP(obj.reshape([1, 4, 3]), im.reshape([1, 4, 2]),
+                                      camera_intrinsics, None#, flags=cv2.CV_P3P
+                                      )
 
-  #red = img[:, :, 1].copy()
+    [[est_x], [est_y], [est_z]] = tvec
+    [[est_rx], [est_ry], [est_rz]] = rvec
 
-  #vis = saturated
+    estimated_globe_pose = (radius, est_x, est_y, est_z, est_rx, est_ry, est_rz)
+    # draw estimated outline of the globe
+    x_im_or, y_im_or = project((estimated_globe_pose[1], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
+    x_im_ed, y_im_ed = project((estimated_globe_pose[1] + estimated_globe_pose[0], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
+    radius_im = np.sqrt((x_im_ed - x_im_or)**2 + (y_im_ed - y_im_or)**2)
+    cv2.circle(vis, (int(x_im_or), int(y_im_or)), int(radius_im), (255, 255, 255), 1)
+
+    # draw equator/prime meridian
+    for j in range(0, 361, 10):
+      x, y, z, _ = surface_point(0, j, estimated_globe_pose)
+      x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
+
+      cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
+
+    for j in range(-90, 90, 10):
+      x, y, z, _ = surface_point(j, 0, estimated_globe_pose)
+      x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
+
+      cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
   dt = clock() - t
 
   draw_str(vis, (20, 20), 'time: %.1f ms' % (dt*1000))
