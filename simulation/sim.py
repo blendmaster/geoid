@@ -329,6 +329,19 @@ points = [
   (-22.9083, -43.2436, (255, 255, 0)), # rio de janeiro
 ]
 
+# prime/equator image is cenetered at lat lon (0,0)
+# 2016x2016
+# features extracted from it can then be changed to lat,lon pairs from image x, y
+# easily
+# then when features are matched in the camera image, they can be converted
+# to model (globe) x, y, z and used in solvePnPRansac instead of 
+# findHomography()
+def to_globe(im):
+  ...
+
+
+
+
 #test points
 
 #for i in range(-90, 91, 10):
