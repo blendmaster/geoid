@@ -340,185 +340,115 @@ points = [
 
 #simulate(camera_intrinsics, camera_extrinsics, globe_pose, points)
 
-cam = create_capture(1)
+cam = create_capture(0)
 
 cam.set(cv2.cv.CV_CAP_PROP_BRIGHTNESS, 0.5)
 cam.set(cv2.cv.CV_CAP_PROP_EXPOSURE, -0.9)
 cam.set(cv2.cv.CV_CAP_PROP_GAIN, 0)
 cam.set(cv2.cv.CV_CAP_PROP_SATURATION, 1)
 
-def nothing(_=None):
-  return
+#def nothing(_=None):
+  #return
 
-cv2.namedWindow('camera')
-cv2.createTrackbar('h', 'camera', 0, 255, nothing)
-cv2.createTrackbar('hm', 'camera', 255, 255, nothing)
-cv2.createTrackbar('s', 'camera', 0, 255, nothing)
-cv2.createTrackbar('sm', 'camera', 255, 255, nothing)
-cv2.createTrackbar('v', 'camera', 0, 255, nothing)
-cv2.createTrackbar('vm', 'camera', 255, 255, nothing)
-cv2.createTrackbar('op', 'camera', 2, 20, nothing)
+#cv2.namedWindow('camera')
+#cv2.createTrackbar('h', 'camera', 0, 255, nothing)
+#cv2.createTrackbar('hm', 'camera', 255, 255, nothing)
+#cv2.createTrackbar('s', 'camera', 0, 255, nothing)
+#cv2.createTrackbar('sm', 'camera', 255, 255, nothing)
+#cv2.createTrackbar('v', 'camera', 0, 255, nothing)
+#cv2.createTrackbar('vm', 'camera', 255, 255, nothing)
+#cv2.createTrackbar('op', 'camera', 2, 20, nothing)
 
-#detector = cv2.ORB( nfeatures = 1000 )
-#FLANN_INDEX_KDTREE = 1
-#FLANN_INDEX_LSH    = 6
-#flann_params= dict(algorithm = FLANN_INDEX_LSH,
-                   #table_number = 6, # 12
-                   #key_size = 12,     # 20
-                   #multi_probe_level = 1) #2
-#matcher = cv2.FlannBasedMatcher(flann_params, {})  # bug : need to pass empty dict (#1329)
-#mask = np.zeros([480, 640], dtype=np.uint8)
-#cv2.circle(mask, (320, 240), 240, 255, -1)
+detector = cv2.ORB( nfeatures = 1000 )
+FLANN_INDEX_KDTREE = 1
+FLANN_INDEX_LSH    = 6
+flann_params= dict(algorithm = FLANN_INDEX_LSH,
+                   table_number = 6, # 12
+                   key_size = 12,     # 20
+                   multi_probe_level = 1) #2
+matcher = cv2.FlannBasedMatcher(flann_params, {})  # bug : need to pass empty dict (#1329)
 
-# thresholds
-blue = ((102, 60, 127), (112, 255, 255))
-green = ((56, 60, 127), (95, 255, 255))
-orange = ((0, 60, 127), (10, 255, 255))
-yellow = ((17, 100, 127), (30, 255, 255))
-red = ((0, 60, 127), (3, 255, 255))
+# grab training data
+us = cv2.imread('us.png', 1)
+canada = cv2.imread('canada.png', 1)
+centralam = cv2.imread('centralam.png', 1)
 
-def find(hsv, color_def):
-  lo, hi = color_def
-  thresh = cv2.inRange(hsv, lo, hi)
+us_kp, us_desc = detector.detectAndCompute(us, None)
+canada_kp, canada_desc = detector.detectAndCompute(canada, None)
+centralam_kp, centralam_desc = detector.detectAndCompute(centralam, None)
 
-  st = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (op, op))
-  opened = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, st, iterations=1)
-
-  contours, hierarchy = cv2.findContours(
-      opened,
-      cv2.RETR_TREE,
-      cv2.CHAIN_APPROX_SIMPLE)
-
-  found = []
-  for i, contour in enumerate(contours):
-    m = cv2.moments(contour)
-
-    if m['m00'] == 0:
-      continue
-
-    xim, yim = ( m['m10']/m['m00'],m['m01']/m['m00'] )
-
-    found.append((int(xim), int(yim)))
-
-  return found
+def filter_matches(kp1, kp2, matches, ratio = 0.75):
+    mkp1, mkp2 = [], []
+    for m in matches:
+        if len(m) == 2 and m[0].distance < m[1].distance * ratio:
+            m = m[0]
+            mkp1.append( kp1[m.queryIdx] )
+            mkp2.append( kp2[m.trainIdx] )
+    p1 = np.float32([kp.pt for kp in mkp1])
+    p2 = np.float32([kp.pt for kp in mkp2])
+    kp_pairs = zip(mkp1, mkp2)
+    return p1, p2, kp_pairs
 
 while True:
   ret, img = cam.read()
   t = clock()
 
-  #cv2.circle(img, (320, 240), 240, (255, 255, 255), 1)
-  #keypoints, descrs = detector.detectAndCompute(img, None)
-
-  #for keypoint in keypoints:
-    #[x, y] =  np.uint32(keypoint.pt)
-    #cv2.circle(img, (x, y), 1, (0, 255, 0), -1)
-
-  hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-
-  h = cv2.getTrackbarPos('h', 'camera')
-  hm = cv2.getTrackbarPos('hm', 'camera')
-  s = cv2.getTrackbarPos('s', 'camera')
-  sm = cv2.getTrackbarPos('sm', 'camera')
-  v = cv2.getTrackbarPos('v', 'camera')
-  vm = cv2.getTrackbarPos('vm', 'camera')
-  op = cv2.getTrackbarPos('op', 'camera')
-  if op < 1:
-    op = 1
-
-  thresh = cv2.inRange(hsv, (h, s, v), (hm, sm, vm))
-
-  st = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (op, op))
-  opened = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, st, iterations=1)
-
-  img[opened == 0] = (0, 0, 0)
-
   vis = img
 
-  radius, gx, gy, gz, _, _, _ = globe_pose
+  img_kp, img_desc = detector.detectAndCompute(img, None)
 
-  # model globe pose
-  model_globe = (radius, 0, 0, 0, 0, 0, 0)
+  us_raw_matches = matcher.knnMatch(img_desc, trainDescriptors=us_desc, k = 2) #2
+  p1, p2, kp_pairs_us = filter_matches(img_kp, us_kp, us_raw_matches)
 
-  image_points = []
-  model_points = []
+  canada_raw_matches = matcher.knnMatch(img_desc, trainDescriptors=canada_desc, k = 2) #2
+  p1, p2, kp_pairs_canada = filter_matches(img_kp, canada_kp, canada_raw_matches)
 
-  f_blue = find(hsv, blue)
-  for point in f_blue:
-    cv2.circle(img, point, 1, (255, 0, 0), -1)
-    draw_str(img, point, 'blue')
+  centralam_raw_matches = matcher.knnMatch(img_desc, trainDescriptors=centralam_desc, k = 2) #2
+  p1, p2, kp_pairs_centralam = filter_matches(img_kp, centralam_kp, centralam_raw_matches)
 
-    lat, lon = (40.7142, -74.0064) # new york
-    x, y, z, _ = surface_point(lat, lon, model_globe)
+  matches_from_us = np.int32([kpp[0].pt for kpp in kp_pairs_us])
+  for p in matches_from_us:
+    cv2.circle(vis, (p[0], p[1]), 2, (255, 0, 0), -1)
 
-    model_points.append([x, y, z])
-    image_points.append([point[0], point[1]])
-    break
+  matches_from_canada = np.int32([kpp[0].pt for kpp in kp_pairs_canada])
+  for p in matches_from_canada:
+    cv2.circle(vis, (p[0], p[1]), 2, (0, 255, 0), -1)
 
-  f_green = find(hsv, green)
-  for point in f_green:
-    cv2.circle(img, point, 1, (0,255, 0), -1)
-    draw_str(img, point, 'green')
-
-    lat, lon = (31.7833, 35.2167) # jerusalem
-    x, y, z, _ = surface_point(lat, lon, model_globe)
-
-    model_points.append([x, y, z])
-    image_points.append([point[0], point[1]])
-    break
-  f_yellow = find(hsv, yellow)
-  for point in f_yellow:
-    cv2.circle(img, point, 1, (0,255, 255), -1)
-    draw_str(img, point, 'yellow')
-
-    lat, lon = (51.5171, -0.1062) # london
-    x, y, z, _ = surface_point(lat, lon, model_globe)
-
-    model_points.append([x, y, z])
-    image_points.append([point[0], point[1]])
-    break
-  f_orange = find(hsv, orange)
-  for point in f_orange:
-    cv2.circle(img, point, 1, (0, 127, 255), -1)
-    draw_str(img, point, 'orange')
-
-    lat, lon = (33.5992, -7.6200) # casablanca
-    x, y, z, _ = surface_point(lat, lon, model_globe)
-
-    model_points.append([x, y, z])
-    image_points.append([point[0], point[1]])
-    break
+  matches_from_centralam = np.int32([kpp[0].pt for kpp in kp_pairs_centralam])
+  for p in matches_from_centralam:
+    cv2.circle(vis, (p[0], p[1]), 2, (0, 0, 255), -1)
 
 
-  if len(image_points) == 4:
-    obj = np.array(model_points, dtype=np.float32)
-    im = np.array(image_points, dtype=np.float32)
+  #if len(image_points) == 4:
+    #obj = np.array(model_points, dtype=np.float32)
+    #im = np.array(image_points, dtype=np.float32)
 
-    retval, rvec, tvec = cv2.solvePnP(obj.reshape([1, 4, 3]), im.reshape([1, 4, 2]),
-                                      camera_intrinsics, None#, flags=cv2.CV_P3P
-                                      )
+    #retval, rvec, tvec = cv2.solvePnP(obj.reshape([1, 4, 3]), im.reshape([1, 4, 2]),
+                                      #camera_intrinsics, None, flags=cv2.CV_P3P
+                                      #)
 
-    [[est_x], [est_y], [est_z]] = tvec
-    [[est_rx], [est_ry], [est_rz]] = rvec
+    #[[est_x], [est_y], [est_z]] = tvec
+    #[[est_rx], [est_ry], [est_rz]] = rvec
 
-    estimated_globe_pose = (radius, est_x, est_y, est_z, est_rx, est_ry, est_rz)
-    # draw estimated outline of the globe
-    x_im_or, y_im_or = project((estimated_globe_pose[1], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
-    x_im_ed, y_im_ed = project((estimated_globe_pose[1] + estimated_globe_pose[0], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
-    radius_im = np.sqrt((x_im_ed - x_im_or)**2 + (y_im_ed - y_im_or)**2)
-    cv2.circle(vis, (int(x_im_or), int(y_im_or)), int(radius_im), (255, 255, 255), 1)
+    #estimated_globe_pose = (radius, est_x, est_y, est_z, est_rx, est_ry, est_rz)
+    ## draw estimated outline of the globe
+    #x_im_or, y_im_or = project((estimated_globe_pose[1], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
+    #x_im_ed, y_im_ed = project((estimated_globe_pose[1] + estimated_globe_pose[0], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
+    #radius_im = np.sqrt((x_im_ed - x_im_or)**2 + (y_im_ed - y_im_or)**2)
+    #cv2.circle(vis, (int(x_im_or), int(y_im_or)), int(radius_im), (255, 255, 255), 1)
 
-    # draw equator/prime meridian
-    for j in range(0, 361, 10):
-      x, y, z, _ = surface_point(0, j, estimated_globe_pose)
-      x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
+    ## draw equator/prime meridian
+    #for j in range(0, 361, 10):
+      #x, y, z, _ = surface_point(0, j, estimated_globe_pose)
+      #x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
 
-      cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
+      #cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
 
-    for j in range(-90, 90, 10):
-      x, y, z, _ = surface_point(j, 0, estimated_globe_pose)
-      x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
+    #for j in range(-90, 90, 10):
+      #x, y, z, _ = surface_point(j, 0, estimated_globe_pose)
+      #x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
 
-      cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
+      #cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
   dt = clock() - t
 
   draw_str(vis, (20, 20), 'time: %.1f ms' % (dt*1000))
