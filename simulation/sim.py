@@ -340,7 +340,7 @@ points = [
 
 #simulate(camera_intrinsics, camera_extrinsics, globe_pose, points)
 
-cam = create_capture(0)
+cam = create_capture(1)
 
 cam.set(cv2.cv.CV_CAP_PROP_BRIGHTNESS, 0.5)
 cam.set(cv2.cv.CV_CAP_PROP_EXPOSURE, -0.9)
@@ -357,10 +357,61 @@ cv2.createTrackbar('s', 'camera', 0, 255, nothing)
 cv2.createTrackbar('sm', 'camera', 255, 255, nothing)
 cv2.createTrackbar('v', 'camera', 0, 255, nothing)
 cv2.createTrackbar('vm', 'camera', 255, 255, nothing)
+cv2.createTrackbar('op', 'camera', 5, 20, nothing)
+
+#detector = cv2.ORB( nfeatures = 1000 )
+#FLANN_INDEX_KDTREE = 1
+#FLANN_INDEX_LSH    = 6
+#flann_params= dict(algorithm = FLANN_INDEX_LSH,
+                   #table_number = 6, # 12
+                   #key_size = 12,     # 20
+                   #multi_probe_level = 1) #2
+#matcher = cv2.FlannBasedMatcher(flann_params, {})  # bug : need to pass empty dict (#1329)
+#mask = np.zeros([480, 640], dtype=np.uint8)
+#cv2.circle(mask, (320, 240), 240, 255, -1)
+
+# thresholds
+blue = ((102, 60, 127), (112, 255, 255))
+green = ((56, 60, 127), (87, 255, 255))
+orange = ((3, 60, 127), (13, 255, 255))
+yellow = ((10, 60, 127), (30, 255, 255))
+red = ((0, 60, 127), (3, 255, 255))
+
+def find(hsv, color_def):
+  lo, hi = color_def
+  thresh = cv2.inRange(hsv, lo, hi)
+
+  st = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (op, op))
+  opened = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, st, iterations=1)
+
+  contours, hierarchy = cv2.findContours(
+      opened,
+      cv2.RETR_TREE,
+      cv2.CHAIN_APPROX_SIMPLE)
+
+  found = []
+  for i, contour in enumerate(contours):
+    m = cv2.moments(contour)
+
+    if m['m00'] == 0:
+      continue
+
+    xim, yim = ( m['m10']/m['m00'],m['m01']/m['m00'] )
+
+    found.append((int(xim), int(yim)))
+
+  return found
 
 while True:
   ret, img = cam.read()
   t = clock()
+
+  #cv2.circle(img, (320, 240), 240, (255, 255, 255), 1)
+  #keypoints, descrs = detector.detectAndCompute(img, None)
+
+  #for keypoint in keypoints:
+    #[x, y] =  np.uint32(keypoint.pt)
+    #cv2.circle(img, (x, y), 1, (0, 255, 0), -1)
 
   hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
@@ -370,43 +421,35 @@ while True:
   sm = cv2.getTrackbarPos('sm', 'camera')
   v = cv2.getTrackbarPos('v', 'camera')
   vm = cv2.getTrackbarPos('vm', 'camera')
+  op = cv2.getTrackbarPos('op', 'camera')
+  if op < 1:
+    op = 1
   
   thresh = cv2.inRange(hsv, (h, s, v), (hm, sm, vm))
 
-  img[thresh == 0] = (0, 0, 0)
+  st = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (op, op))
+  opened = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, st, iterations=1)
+
+  img[opened == 0] = (0, 0, 0)
 
   vis = img
-
-  # threshold based on value (brightness)
-  #value = hsv[:, :, 2]
-  #retval, thresholded = cv2.threshold(
-      #value,
-      #thresh=70,
-      #maxval=255,
-      #type=cv2.THRESH_BINARY)
-
-  ## eliminate small regions
-  #st = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (8, 8))
-  #opened = cv2.morphologyEx(thresholded, cv2.MORPH_OPEN, st, iterations=1)
-
-  #contours, hierarchy = cv2.findContours(
-      #opened,
-      #cv2.RETR_TREE,
-      #cv2.CHAIN_APPROX_SIMPLE)
-
-  #contoured = np.zeros_like(thresholded, dtype=np.uint8)
-  #cv2.drawContours(contoured, contours, -1, 255, -1)
-
-  ## mask non-contoured areas in color image
-  #img[contoured == 0] = np.array([0, 0, 0])
-
-  ## now threshold on saturation
-  #saturation = hsv[:, :, 2]
-  #retval, saturated = cv2.threshold(
-      #value,
-      #thresh=240,
-      #maxval=255,
-      #type=cv2.THRESH_BINARY)
+  
+  f_blue = find(hsv, blue)
+  for point in f_blue:
+    cv2.circle(img, point, 1, (255, 0, 0), -1)
+    draw_str(img, point, 'blue')
+  f_green = find(hsv, green)
+  for point in f_green:
+    cv2.circle(img, point, 1, (0,255, 0), -1)
+    draw_str(img, point, 'green')
+  f_yellow = find(hsv, yellow)
+  for point in f_yellow:
+    cv2.circle(img, point, 1, (0,255, 255), -1)
+    draw_str(img, point, 'yellow')
+  f_orange = find(hsv, orange)
+  for point in f_orange:
+    cv2.circle(img, point, 1, (0, 127, 255), -1)
+    draw_str(img, point, 'orange')
 
   #for i, contour in enumerate(contours):
     #m = cv2.moments(contour)
