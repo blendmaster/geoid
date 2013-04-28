@@ -311,9 +311,9 @@ camera_rot_translate = np.hstack((camera_rot, camera_world_pos))
 camera_extrinsics = np.linalg.inv(
     np.vstack((camera_rot_translate, np.array([0, 0, 0, 1]))))[0:3, :]
 
-print(camera_extrinsics)
-print(camera_intrinsics)
-print(np.dot(camera_intrinsics, camera_extrinsics))
+#print(camera_extrinsics)
+#print(camera_intrinsics)
+#print(np.dot(camera_intrinsics, camera_extrinsics))
 
 # radius, x, y, z, xrot (around x axis), yrot, zrot
 globe_pose = (5, 0, 0, 30, 30, 30, 0)
@@ -343,9 +343,20 @@ points = [
 cam = create_capture(0)
 
 #cam.set(cv2.cv.CV_CAP_PROP_BRIGHTNESS, -10)
-cam.set(cv2.cv.CV_CAP_PROP_EXPOSURE, -20)
+#cam.set(cv2.cv.CV_CAP_PROP_EXPOSURE, -20)
 #cam.set(cv2.cv.CV_CAP_PROP_GAIN, -15)
-cam.set(cv2.cv.CV_CAP_PROP_SATURATION, 100)
+#cam.set(cv2.cv.CV_CAP_PROP_SATURATION, 100)
+
+def nothing(_=None):
+  return
+
+cv2.namedWindow('camera')
+cv2.createTrackbar('h', 'camera', 0, 255, nothing)
+cv2.createTrackbar('hm', 'camera', 255, 255, nothing)
+cv2.createTrackbar('s', 'camera', 0, 255, nothing)
+cv2.createTrackbar('sm', 'camera', 255, 255, nothing)
+cv2.createTrackbar('v', 'camera', 0, 255, nothing)
+cv2.createTrackbar('vm', 'camera', 255, 255, nothing)
 
 while True:
   ret, img = cam.read()
@@ -353,48 +364,69 @@ while True:
 
   hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
+  h = cv2.getTrackbarPos('h', 'camera')
+  hm = cv2.getTrackbarPos('hm', 'camera')
+  s = cv2.getTrackbarPos('s', 'camera')
+  sm = cv2.getTrackbarPos('sm', 'camera')
+  v = cv2.getTrackbarPos('v', 'camera')
+  vm = cv2.getTrackbarPos('vm', 'camera')
+  
+  thresh = cv2.inRange(hsv, (h, s, v), (hm, sm, vm))
+
+  img[thresh == 0] = (0, 0, 0)
+
+  vis = img
+
   # threshold based on value (brightness)
-  value = hsv[:, :, 2]
-  retval, thresholded = cv2.threshold(
-      value,
-      thresh=40,
-      maxval=255,
-      type=cv2.THRESH_BINARY)
+  #value = hsv[:, :, 2]
+  #retval, thresholded = cv2.threshold(
+      #value,
+      #thresh=70,
+      #maxval=255,
+      #type=cv2.THRESH_BINARY)
 
-  # eliminate small regions
-  st = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (8, 8))
-  opened = cv2.morphologyEx(thresholded, cv2.MORPH_OPEN, st, iterations=1)
+  ## eliminate small regions
+  #st = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (8, 8))
+  #opened = cv2.morphologyEx(thresholded, cv2.MORPH_OPEN, st, iterations=1)
 
-  contours, hierarchy = cv2.findContours(
-      opened,
-      cv2.RETR_TREE,
-      cv2.CHAIN_APPROX_SIMPLE)
+  #contours, hierarchy = cv2.findContours(
+      #opened,
+      #cv2.RETR_TREE,
+      #cv2.CHAIN_APPROX_SIMPLE)
 
-  contoured = np.zeros_like(thresholded, dtype=np.uint8)
-  cv2.drawContours(contoured, contours, -1, 255, -1)
+  #contoured = np.zeros_like(thresholded, dtype=np.uint8)
+  #cv2.drawContours(contoured, contours, -1, 255, -1)
 
-  # mask non-contoured areas in color image
-  img[contoured == 0] = np.array([0, 0, 0])
+  ## mask non-contoured areas in color image
+  #img[contoured == 0] = np.array([0, 0, 0])
 
-  for i, contour in enumerate(contours):
-    m = cv2.moments(contour)
+  ## now threshold on saturation
+  #saturation = hsv[:, :, 2]
+  #retval, saturated = cv2.threshold(
+      #value,
+      #thresh=240,
+      #maxval=255,
+      #type=cv2.THRESH_BINARY)
 
-    if m['m00'] == 0:
-      continue
+  #for i, contour in enumerate(contours):
+    #m = cv2.moments(contour)
 
-    xim, yim = ( m['m10']/m['m00'],m['m01']/m['m00'] )
-    cv2.circle(img, (int(xim), int(yim)), 1, (255, 0, 0), -1)
+    #if m['m00'] == 0:
+      #continue
 
-    # find average color in original image
-    mask = np.zeros_like(thresholded, dtype=np.uint8)
-    cv2.drawContours(mask, contours, i, 1, -1)
-    h, s, v, _ = cv2.mean(hsv, mask)
+    #xim, yim = ( m['m10']/m['m00'],m['m01']/m['m00'] )
+    #cv2.circle(img, (int(xim), int(yim)), 1, (255, 0, 0), -1)
 
-    draw_str(img, (int(xim), int(yim)), 'color: %f, %f, %f' % (h, s, v))
+    ## find average color in original image
+    #mask = np.zeros_like(thresholded, dtype=np.uint8)
+    #cv2.drawContours(mask, contours, i, 1, -1)
+    #h, s, v, _ = cv2.mean(saturation, mask)
+
+    #draw_str(img, (int(xim), int(yim)), '%.1f, %.1f, %.1f' % (h, s, v))
 
   #red = img[:, :, 1].copy()
 
-  vis = img
+  #vis = saturated
   dt = clock() - t
 
   draw_str(vis, (20, 20), 'time: %.1f ms' % (dt*1000))
