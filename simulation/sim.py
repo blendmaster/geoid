@@ -377,6 +377,28 @@ us_kp, us_desc = detector.detectAndCompute(us, None)
 canada_kp, canada_desc = detector.detectAndCompute(canada, None)
 centralam_kp, centralam_desc = detector.detectAndCompute(centralam, None)
 
+# lat, lon mapping from image points, assuming flat images
+us_rect = ((48.969, -118.780), (26.946, -85.834))
+canada_rect = ((64.597, -152.851), (39.502, -71.480))
+centralam_rect = ((31.26, -114.82), (2.8733, -67.379))
+
+def to_globe(im, imshape, rect):
+  x, y = im
+  height, width, _ = imshape
+
+  (lat1, lon1), (lat2, lon2) = rect
+
+  latheight = lat2 - lat1
+  lonwidth = lon2 - lon1
+
+  imwr = float(x) / float(width)
+  lon = lon1 + imwr * lonwidth
+
+  imhr = float(y) / float(height)
+  lat = lat1 + imhr * latheight
+
+  return (lat, lon)
+
 def filter_matches(kp1, kp2, matches, ratio = 0.75):
     mkp1, mkp2 = [], []
     for m in matches:
@@ -406,49 +428,78 @@ while True:
   centralam_raw_matches = matcher.knnMatch(img_desc, trainDescriptors=centralam_desc, k = 2) #2
   p1, p2, kp_pairs_centralam = filter_matches(img_kp, centralam_kp, centralam_raw_matches)
 
+  object_points = []
+  image_points = []
   matches_from_us = np.int32([kpp[0].pt for kpp in kp_pairs_us])
   for p in matches_from_us:
     cv2.circle(vis, (p[0], p[1]), 2, (255, 0, 0), -1)
+    image_points.append(p)
+    object_points.append(to_globe(p, us.shape, us_rect))
 
   matches_from_canada = np.int32([kpp[0].pt for kpp in kp_pairs_canada])
   for p in matches_from_canada:
     cv2.circle(vis, (p[0], p[1]), 2, (0, 255, 0), -1)
+    image_points.append(p)
+    object_points.append(to_globe(p, canada.shape, canada_rect))
 
   matches_from_centralam = np.int32([kpp[0].pt for kpp in kp_pairs_centralam])
   for p in matches_from_centralam:
     cv2.circle(vis, (p[0], p[1]), 2, (0, 0, 255), -1)
+    image_points.append(p)
+    object_points.append(to_globe(p, centralam.shape, centralam_rect))
+
+  radius = 1
+  model_globe = (radius, 0, 0, 0, 0, 0, 0)
+
+  globe_points = []
+  for lat, lon in object_points:
+    x, y, z, _ = surface_point(lat, lon, model_globe)
+
+    globe_points.append((x, y, z))
+
+  if len(image_points) > 4:
+    obj = np.array(globe_points, dtype=np.float32)
+    im = np.array(image_points, dtype=np.float32)
+
+    N = obj.shape[0]
+
+    rvec, tvec, inliers = cv2.solvePnPRansac(obj.reshape([1, N, 3]), im.reshape([1, N, 2]),
+                                      camera_intrinsics, None #flags=cv2.CV_P3P
+                                      )
+
+    #print tvec
+
+    if inliers != None:
+      for i in inliers:
+        p = image_points[i]
+        cv2.circle(vis, (p[0], p[1]), 2, (255, 255, 255), -1)
+        o = object_points[i]
+        draw_str(vis, p, '%.1f %.1f' % (o[0], o[1]))
 
 
-  #if len(image_points) == 4:
-    #obj = np.array(model_points, dtype=np.float32)
-    #im = np.array(image_points, dtype=np.float32)
+    [[est_x], [est_y], [est_z]] = tvec
+    [[est_rx], [est_ry], [est_rz]] = rvec
 
-    #retval, rvec, tvec = cv2.solvePnP(obj.reshape([1, 4, 3]), im.reshape([1, 4, 2]),
-                                      #camera_intrinsics, None, flags=cv2.CV_P3P
-                                      #)
+    estimated_globe_pose = (radius, est_x, est_y, est_z, est_rx, est_ry, est_rz)
+    # draw estimated outline of the globe
+    x_im_or, y_im_or = project((estimated_globe_pose[1], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
+    x_im_ed, y_im_ed = project((estimated_globe_pose[1] + estimated_globe_pose[0], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
+    radius_im = np.sqrt((x_im_ed - x_im_or)**2 + (y_im_ed - y_im_or)**2)
+    if radius_im < 3000:
+      cv2.circle(vis, (int(x_im_or), int(y_im_or)), int(radius_im), (255, 255, 255), 1)
 
-    #[[est_x], [est_y], [est_z]] = tvec
-    #[[est_rx], [est_ry], [est_rz]] = rvec
+      ## draw equator/prime meridian
+      for j in range(0, 361, 10):
+        x, y, z, _ = surface_point(0, j, estimated_globe_pose)
+        x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
 
-    #estimated_globe_pose = (radius, est_x, est_y, est_z, est_rx, est_ry, est_rz)
-    ## draw estimated outline of the globe
-    #x_im_or, y_im_or = project((estimated_globe_pose[1], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
-    #x_im_ed, y_im_ed = project((estimated_globe_pose[1] + estimated_globe_pose[0], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
-    #radius_im = np.sqrt((x_im_ed - x_im_or)**2 + (y_im_ed - y_im_or)**2)
-    #cv2.circle(vis, (int(x_im_or), int(y_im_or)), int(radius_im), (255, 255, 255), 1)
+        cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
 
-    ## draw equator/prime meridian
-    #for j in range(0, 361, 10):
-      #x, y, z, _ = surface_point(0, j, estimated_globe_pose)
-      #x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
+      for j in range(-90, 90, 10):
+        x, y, z, _ = surface_point(j, 0, estimated_globe_pose)
+        x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
 
-      #cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
-
-    #for j in range(-90, 90, 10):
-      #x, y, z, _ = surface_point(j, 0, estimated_globe_pose)
-      #x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
-
-      #cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
+        cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
   dt = clock() - t
 
   draw_str(vis, (20, 20), 'time: %.1f ms' % (dt*1000))
