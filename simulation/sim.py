@@ -350,7 +350,7 @@ cam.set(cv2.cv.CV_CAP_PROP_SATURATION, 1)
 #def nothing(_=None):
   #return
 
-#cv2.namedWindow('camera')
+cv2.namedWindow('camera')
 #cv2.createTrackbar('h', 'camera', 0, 255, nothing)
 #cv2.createTrackbar('hm', 'camera', 255, 255, nothing)
 #cv2.createTrackbar('s', 'camera', 0, 255, nothing)
@@ -398,6 +398,19 @@ def to_globe(im, imshape, rect):
   lat = lat1 + imhr * latheight
 
   return (lat, lon)
+
+#for i, kp in enumerate(us_kp):
+  #if i % 100 != 0:
+    #continue
+  #lat, lon = to_globe(kp.pt, us.shape, us_rect)
+  #cv2.circle(us, (int(kp.pt[0]), int(kp.pt[1])), 2, (255, 0, 0), -1)
+  #draw_str(us, (int(kp.pt[0]), int(kp.pt[1])), '%.1f %.1f' % (lat, lon))
+
+#cv2.imshow('camera', us)
+
+#while True:
+  #if 0xFF & cv2.waitKey(0) == 27:
+    #sys.exit()
 
 def filter_matches(kp1, kp2, matches, ratio = 0.75):
     mkp1, mkp2 = [], []
@@ -457,14 +470,14 @@ while True:
 
     globe_points.append((x, y, z))
 
-  if len(image_points) > 4:
+  if len(image_points) > 100:
     obj = np.array(globe_points, dtype=np.float32)
     im = np.array(image_points, dtype=np.float32)
 
     N = obj.shape[0]
 
     rvec, tvec, inliers = cv2.solvePnPRansac(obj.reshape([1, N, 3]), im.reshape([1, N, 2]),
-                                      camera_intrinsics, None #flags=cv2.CV_P3P
+                                      camera_intrinsics, None ,flags=cv2.CV_EPNP
                                       )
 
     #print tvec
