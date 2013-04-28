@@ -342,10 +342,10 @@ points = [
 
 cam = create_capture(0)
 
-#cam.set(cv2.cv.CV_CAP_PROP_BRIGHTNESS, -10)
-#cam.set(cv2.cv.CV_CAP_PROP_EXPOSURE, -20)
-#cam.set(cv2.cv.CV_CAP_PROP_GAIN, -15)
-#cam.set(cv2.cv.CV_CAP_PROP_SATURATION, 100)
+cam.set(cv2.cv.CV_CAP_PROP_BRIGHTNESS, 0.5)
+cam.set(cv2.cv.CV_CAP_PROP_EXPOSURE, -0.9)
+cam.set(cv2.cv.CV_CAP_PROP_GAIN, 0)
+cam.set(cv2.cv.CV_CAP_PROP_SATURATION, 1)
 
 def nothing(_=None):
   return
