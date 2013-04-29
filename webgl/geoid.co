@@ -118,6 +118,7 @@ export draw = !->
 
   model-view = mat4.identity!
   mat4.translate model-view, [0,0, -(distance + 1)]
+  console.log model-view
   mat4.multiply  model-view, rot
 
   uniform gl, \ModelViewMatrix \Matrix4fv model-view

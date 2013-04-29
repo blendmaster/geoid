@@ -8,10 +8,6 @@ import random
 from video import create_capture
 from common import clock, draw_str
 
-# Nexus S rear camera, preview mode in OpenCV
-width  = 640.0
-height = 480.0
-
 def project(point3d, camera_intrinsics, camera_extrinsics):
   x, y, z = point3d
   projection_matrix = np.dot(camera_intrinsics, camera_extrinsics)
@@ -78,59 +74,23 @@ def surface_point(lat, lon, globe_pose):
   # translate
   return (x + x_g, y + y_g, z + z_g, norm_flat)
 
-def simulated_image(points, camera_intrinsics, camera_extrinsics, globe_pose):
-  """From a camera pose and globe pose in world coordinates, an image
-  containing the projected points on the globe, with a bit of noise and
-  extraneous parts."""
+fov = 15
+def K(width, height):
 
-  img = np.zeros((height, width, 3), np.uint8)
+  fov_angle = np.arctan(height / width)
 
-  camera_pos = np.array([camera_extrinsics[0][3],
-                         camera_extrinsics[1][3],
-                         camera_extrinsics[2][3]])
+  fov_x = fov * np.cos(fov_angle)
+  fov_y = fov * np.sin(fov_angle)
 
-  for point in points:
-    lat, lon, (r,g,b) = point
-    x, y, z, norm = surface_point(point[0], point[1], globe_pose)
+  fx = (width / 2) / np.tan(fov_x / 2)
+  fy = (height / 2) / np.tan(fov_y / 2)
 
-    x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
-
-    eye_ray = np.array([x, y, z]) - camera_pos
-    eye_ray = eye_ray / np.linalg.norm(eye_ray)
-    # peturb randomly
-    x_im = x_im + random.randint(0, 10)
-    y_im = y_im + random.randint(0, 10)
-
-    # if in range
-    if 0 < x_im < width and 0 < y_im < height:
-      # if on front face
-      if np.dot(eye_ray, norm) > 0:
-          # draw on image
-          cv2.circle(img,
-                     (int(x_im), int(y_im)), # center
-                     3, # radius
-                     (b, g, r), # color, in opencv's order
-                     int(-1) # stroke thickness (negative means filled in)
-                     )
-
-  return img
-
-fov = 30.41 # of the rear camera, in degrees, across the diagonal
-
-fov_angle = np.arctan(height / width)
-
-fov_x = fov * np.cos(fov_angle)
-fov_y = fov * np.sin(fov_angle)
-
-fx = (width / 2) / np.tan(fov_x / 2)
-fy = (height / 2) / np.tan(fov_y / 2)
-
-# K
-# XXX how am I supposed to get square pixels with two different fov's? I dunno
-# how this is supposed to work
-camera_intrinsics = np.array([[fy , 0  , width / 2 ]   ,
-                              [0  , fy , height / 2]   ,
-                              [0  , 0  , 1         ]])
+  # K
+  # XXX how am I supposed to get square pixels with two different fov's? I dunno
+  # how this is supposed to work
+  return np.array([[fy , 0  , width / 2 ]   ,
+                   [0  , fy , height / 2]   ,
+                   [0  , 0  , 1         ]])
 
 camera_world_pos = np.array([[0.0], [0.0], [0.0]]);
 
@@ -145,7 +105,10 @@ camera_rot_translate = np.hstack((camera_rot, camera_world_pos))
 
 camera_extrinsics = np.linalg.inv(
     np.vstack((camera_rot_translate, np.array([0, 0, 0, 1]))))[0:3, :]
+
+print camera_extrinsics
 # radius, x, y, z, xrot (around x axis), yrot, zrot
+radius = 1
 globe_pose = (1, 0, 0, 30, 30, 30, 0)
 model_globe = (1, 0, 0, 0, 0, 0, 0)
 
@@ -192,17 +155,73 @@ def known_globe_point(kp):
   #print (x, xim / 1008. - 1)
   #print (y, 1 - yim / 1008.)
 
+camera_intrinsics = K(ksize, ksize)
+
 print len(known_keypoints)
+vis = known
+object_points = []
+image_points = []
+for kp in known_keypoints:
+  p = kp.pt
+  image_points.append(p)
+  object_points.append(known_globe_point(kp))
+obj = np.array(object_points, dtype=np.float32)
+im = np.array(image_points, dtype=np.float32)
+
+N = obj.shape[0]
+
+rvec, tvec, inliers = cv2.solvePnPRansac(obj.reshape([1, N, 3]), im.reshape([1, N, 2]),
+                                  camera_intrinsics, None 
+                                  )
+
+print rvec
+print tvec
+
+#if inliers != None:
+  #for i in inliers:
+    #xim, yim = image_points[i]
+    #xg, yg = kp_pairs[i][0].pt
+
+    #cv2.circle(vis, (int(xim), int(yim)), 2, (0, 255, 0), -1)
+    #cv2.circle(vis, (w + int(xg), int(yg)), 2, (0, 255, 0), -1)
+    #cv2.line(vis, (int(xim), int(yim)), (w + int(xg), int(yg)), (0, 255, 0))
+
+[[est_x], [est_y], [est_z]] = tvec
+[[est_rx], [est_ry], [est_rz]] = rvec
+
+#estimated_globe_pose = (radius, est_x, est_y, est_z, est_rx, est_ry, est_rz)
+d = 1. / np.tan(np.deg2rad(fov) / 2)
+print d
+estimated_globe_pose = (1, 0, 0, d + 1, 0, 0, 0)
+# draw estimated outline of the globe
+x_im_or, y_im_or = project((estimated_globe_pose[1], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
+x_im_ed, y_im_ed = project((estimated_globe_pose[1] + estimated_globe_pose[0], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
+radius_im = np.sqrt((x_im_ed - x_im_or)**2 + (y_im_ed - y_im_or)**2)
+if radius_im < 3000:
+  cv2.circle(vis, (int(x_im_or), int(y_im_or)), int(radius_im), (255, 255, 255), 1)
+
+  ## draw equator/prime meridian
+  for j in range(0, 361, 10):
+    x, y, z, _ = surface_point(0, j, estimated_globe_pose)
+    x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
+
+    cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
+
+  for j in range(-90, 90, 10):
+    x, y, z, _ = surface_point(j, 0, estimated_globe_pose)
+    x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
+
+    cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
 
 #known_descriptors = np.array(known_descriptors, dtype=np.uint8)
 #for kp in known_keypoints:
   #pt = kp.pt
   #cv2.circle(known, (int(pt[0]), int(pt[1])), 3, (255, 0, 0), -1)
 
-#cv2.namedWindow('globe')
-#cv2.imshow('globe', known)
-#cv2.waitKey(0)
-#sys.exit(1)
+cv2.namedWindow('globe')
+cv2.imshow('globe', vis)
+cv2.waitKey(0)
+sys.exit(1)
 
 cam = create_capture(0)
 
@@ -268,7 +287,6 @@ def filter_matches(kp1, kp2, matches, ratio = 0.75):
     kp_pairs = zip(mkp1, mkp2)
     return p1, p2, kp_pairs
 
-radius = 1
 
 while True:
   ret, img = cam.read()
