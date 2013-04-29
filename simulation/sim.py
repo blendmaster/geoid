@@ -76,14 +76,15 @@ def surface_point(lat, lon, globe_pose):
 
 fov = 15
 def K(width, height):
-
   fov_angle = np.arctan(height / width)
 
-  fov_x = fov * np.cos(fov_angle)
-  fov_y = fov * np.sin(fov_angle)
+  fov_x = np.deg2rad(fov) * np.cos(fov_angle)
+  fov_y = np.deg2rad(fov) * np.sin(fov_angle)
 
-  fx = (width / 2) / np.tan(fov_x / 2)
-  fy = (height / 2) / np.tan(fov_y / 2)
+  fx = (width / 2.) / np.tan(fov_x / 2.)
+  fy = (height / 2.) / np.tan(fov_y / 2.)
+
+  print fy
 
   # K
   # XXX how am I supposed to get square pixels with two different fov's? I dunno
@@ -156,6 +157,7 @@ def known_globe_point(kp):
   #print (y, 1 - yim / 1008.)
 
 camera_intrinsics = K(ksize, ksize)
+print camera_intrinsics
 
 print len(known_keypoints)
 vis = known
@@ -163,6 +165,7 @@ object_points = []
 image_points = []
 for kp in known_keypoints:
   p = kp.pt
+  cv2.circle(vis, (int(p[0]), int(p[1])), 3, (255, 0, 0), -1)
   image_points.append(p)
   object_points.append(known_globe_point(kp))
 obj = np.array(object_points, dtype=np.float32)
@@ -170,8 +173,21 @@ im = np.array(image_points, dtype=np.float32)
 
 N = obj.shape[0]
 
-rvec, tvec, inliers = cv2.solvePnPRansac(obj.reshape([1, N, 3]), im.reshape([1, N, 2]),
-                                  camera_intrinsics, None 
+d = 1. / np.tan(np.deg2rad(fov) / 2)
+print d
+est_rvec = np.array([[0.], [0.], [0.]])
+est_tvec = np.array([[0.], [0.], [d + 1.]])
+
+#rvec, tvec, inliers = cv2.solvePnPRansac(obj.reshape([1, N, 3]), im.reshape([1, N, 2]),
+                                  #camera_intrinsics, None 
+                                  #)
+#print len(inliers)
+retval, rvec, tvec = cv2.solvePnP(obj.reshape([1, N, 3]), im.reshape([1, N, 2]),
+                                  camera_intrinsics, None,
+                                  rvec=est_rvec,
+                                  tvec=est_tvec,
+                                  useExtrinsicGuess=True,
+                                  flags=cv2.CV_EPNP
                                   )
 
 print rvec
@@ -189,29 +205,27 @@ print tvec
 [[est_x], [est_y], [est_z]] = tvec
 [[est_rx], [est_ry], [est_rz]] = rvec
 
-#estimated_globe_pose = (radius, est_x, est_y, est_z, est_rx, est_ry, est_rz)
-d = 1. / np.tan(np.deg2rad(fov) / 2)
-print d
-estimated_globe_pose = (1, 0, 0, d + 1, 0, 0, 0)
-# draw estimated outline of the globe
-x_im_or, y_im_or = project((estimated_globe_pose[1], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
-x_im_ed, y_im_ed = project((estimated_globe_pose[1] + estimated_globe_pose[0], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
-radius_im = np.sqrt((x_im_ed - x_im_or)**2 + (y_im_ed - y_im_or)**2)
-if radius_im < 3000:
-  cv2.circle(vis, (int(x_im_or), int(y_im_or)), int(radius_im), (255, 255, 255), 1)
+estimated_globe_pose = (radius, est_x, est_y, est_z, est_rx, est_ry, est_rz)
 
-  ## draw equator/prime meridian
-  for j in range(0, 361, 10):
-    x, y, z, _ = surface_point(0, j, estimated_globe_pose)
-    x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
+## draw equator/prime meridian
+for j in range(-90, 91, 5):
+  x, y, z, _ = surface_point(0, j, model_globe)
+  [[[x_im, y_im]]], _ = cv2.projectPoints(np.array([(x, y, z)]), rvec, tvec, camera_intrinsics, None)
 
-    cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
+  cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
 
-  for j in range(-90, 90, 10):
-    x, y, z, _ = surface_point(j, 0, estimated_globe_pose)
-    x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
+for j in range(-90, 91, 5):
+  x, y, z, _ = surface_point(j, 0, model_globe)
+  [[[x_im, y_im]]], _ = cv2.projectPoints(np.array([(x, y, z)]), rvec, tvec, camera_intrinsics, None)
 
-    cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
+  cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
+
+## draw edge of globe
+for j in range(0, 361, 5):
+  x, y, z, _ = surface_point(j, 90, model_globe)
+  [[[x_im, y_im]]], _ = cv2.projectPoints(np.array([(x, y, z)]), rvec, tvec, camera_intrinsics, None)
+
+  cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
 
 #known_descriptors = np.array(known_descriptors, dtype=np.uint8)
 #for kp in known_keypoints:
