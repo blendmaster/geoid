@@ -1,21 +1,9 @@
-# simulated pose estimation of a globe from 2D points on the globe's surface.
-#
-# In real life, the points could be LEDs on the globe's surface for easy
-# detection using thresholding and region centroids.
+# python globe pose estimator from training images
 import cv2
 import numpy as np
 import random
 from video import create_capture
 from common import clock, draw_str
-
-def project(point3d, camera_intrinsics, camera_extrinsics):
-  x, y, z = point3d
-  projection_matrix = np.dot(camera_intrinsics, camera_extrinsics)
-  [[x1], [x2], [x3]] = np.dot(projection_matrix, np.array([[x], [y], [z], [1]]))
-  x_im = x1 / x3
-  y_im = x2 / x3
-
-  return (x_im, y_im)
 
 def rot_z(angle):
   cost = np.cos(np.deg2rad(angle))
@@ -37,8 +25,6 @@ def rot_x(angle):
   return np.array([[1, 0, 0],
                    [0, cost, -sint],
                    [0, sint, cost]])
-
-# globe radius is 1
 
 def surface_point(lat, lon, globe_pose):
   """The 3D coordinates of a latitude/longitude surface point on the globe, as
@@ -98,13 +84,12 @@ camera_rot_translate = np.hstack((camera_rot, camera_world_pos))
 camera_extrinsics = np.linalg.inv(
     np.vstack((camera_rot_translate, np.array([0, 0, 0, 1]))))[0:3, :]
 
-print camera_extrinsics
 # radius, x, y, z, xrot (around x axis), yrot, zrot
 radius = 1
 globe_pose = (1, 0, 0, 30, 30, 30, 0)
 model_globe = (1, 0, 0, 0, 0, 0, 0)
 
-detector = cv2.ORB( nfeatures = 3500 )
+detector = cv2.ORB( nfeatures = 1500 )
 FLANN_INDEX_KDTREE = 1
 FLANN_INDEX_LSH    = 6
 flann_params= dict(algorithm = FLANN_INDEX_LSH,
@@ -113,115 +98,50 @@ flann_params= dict(algorithm = FLANN_INDEX_LSH,
                    multi_probe_level = 1) #2
 matcher = cv2.FlannBasedMatcher(flann_params, {})  # bug : need to pass empty dict (#1329)
 
-# prime/equator image is cenetered at lat lon (0,0)
-# 2016x2016
+# training images pointing at globe center from different angles
 # features extracted from it can then be changed to lat,lon pairs from image x, y
 # easily
 # then when features are matched in the camera image, they can be converted
-# to model (globe) x, y, z and used in solvePnPRansac instead of 
+# to model (globe) x, y, z and used in solvePnPRansac instead of
 # findHomography()
-known = cv2.imread('prime_equator.jpg', 1)
-ksize = known.shape[0] + 0.0
-hsize = ksize / 2.
+known = cv2.imread('54x15.jpg', 1)
+
+# all training images are this size
+ksize = 640.
+hsize = 320.
+
 # masked with white, but just in case
 mask = np.zeros_like(known[:, :, 1], dtype=np.uint8)
 cv2.circle(mask, (int(hsize), int(hsize)), int(hsize), 255, -1)
 known_keypoints, known_descriptors = detector.detectAndCompute(known, mask)
-# translate all keypoints into x, y, z model globe
-def known_globe_point(kp):
-  xim, yim = kp.pt
+
+# translate all keypoints into x, y, z model globe, centered at some lat, lon
+def known_globe_point(p, centerLat, centerLon):
+  xim, yim = p
 
   sinLat = (hsize - yim) / hsize
   latRad = np.arcsin(sinLat)
-  lat = latRad * 180. / np.pi
+  lat = np.rad2deg(latRad)
 
   cosLatSinLon = (hsize - xim) / hsize
   sinLon = cosLatSinLon / np.cos(latRad)
   lonRad = np.arcsin(sinLon)
 
-  lon = lonRad * 180. / np.pi
+  lon = np.rad2deg(lonRad)
 
-  x, y, z, _ = surface_point(lat, lon, model_globe)
+  xn, yn, zn, _ = surface_point(lat, lon, model_globe)
+
+  xrot = -centerLat
+  yrot = -centerLon
+
+  rot = np.dot(rot_x(xrot), rot_y(yrot))
+  [[x], [y], [z]] = np.dot(rot, np.array([[xn], [yn], [zn]]))
 
   return (x, y, z)
-  #print (x, xim / 1008. - 1)
-  #print (y, 1 - yim / 1008.)
 
-#camera_intrinsics = K(ksize, ksize)
-#print camera_intrinsics
-
-#print len(known_keypoints)
-#vis = known
-#object_points = []
-#image_points = []
-#for kp in known_keypoints:
-  #p = kp.pt
-  #cv2.circle(vis, (int(p[0]), int(p[1])), 3, (255, 0, 0), -1)
-  #image_points.append(p)
-  #object_points.append(known_globe_point(kp))
-#obj = np.array(object_points, dtype=np.float32)
-#im = np.array(image_points, dtype=np.float32)
-
-#N = obj.shape[0]
-
-#d = 1. / np.tan(np.deg2rad(fov) / 2)
-#print d
-#est_rvec = np.array([[0.], [0.], [0.]])
-#est_tvec = np.array([[0.], [0.], [d + 1.]])
-
-##rvec, tvec, inliers = cv2.solvePnPRansac(obj.reshape([1, N, 3]), im.reshape([1, N, 2]),
-                                  ##camera_intrinsics, None 
-                                  ##)
-##print len(inliers)
-#retval, rvec, tvec = cv2.solvePnP(obj.reshape([1, N, 3]), im.reshape([1, N, 2]),
-                                  #camera_intrinsics, None,
-                                  #rvec=est_rvec,
-                                  #tvec=est_tvec,
-                                  #useExtrinsicGuess=True,
-                                  #flags=cv2.CV_EPNP
-                                  #)
-
-#print rvec
-#print tvec
-
-##if inliers != None:
-  ##for i in inliers:
-    ##xim, yim = image_points[i]
-    ##xg, yg = kp_pairs[i][0].pt
-
-    ##cv2.circle(vis, (int(xim), int(yim)), 2, (0, 255, 0), -1)
-    ##cv2.circle(vis, (w + int(xg), int(yg)), 2, (0, 255, 0), -1)
-    ##cv2.line(vis, (int(xim), int(yim)), (w + int(xg), int(yg)), (0, 255, 0))
-
-#[[est_x], [est_y], [est_z]] = tvec
-#[[est_rx], [est_ry], [est_rz]] = rvec
-
-#estimated_globe_pose = (radius, est_x, est_y, est_z, est_rx, est_ry, est_rz)
-
-### draw equator/prime meridian
-#for j in range(-90, 91, 5):
-  #x, y, z, _ = surface_point(0, j, model_globe)
-  #[[[x_im, y_im]]], _ = cv2.projectPoints(np.array([(x, y, z)]), rvec, tvec, camera_intrinsics, None)
-
-  #cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
-
-#for j in range(-90, 91, 5):
-  #x, y, z, _ = surface_point(j, 0, model_globe)
-  #[[[x_im, y_im]]], _ = cv2.projectPoints(np.array([(x, y, z)]), rvec, tvec, camera_intrinsics, None)
-
-  #cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
-
-### draw edge of globe
-#for j in range(0, 361, 5):
-  #x, y, z, _ = surface_point(j, 90, model_globe)
-  #[[[x_im, y_im]]], _ = cv2.projectPoints(np.array([(x, y, z)]), rvec, tvec, camera_intrinsics, None)
-
-  #cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
-
-#cv2.namedWindow('globe')
-#cv2.imshow('globe', vis)
-#cv2.waitKey(0)
-#sys.exit(1)
+#print known_globe_point((0, 320), 90., 0)
+##print surface_point(90., 15., model_globe)
+#sys.exit()
 
 cam = create_capture(0)
 
@@ -274,7 +194,8 @@ while True:
       cv2.circle(vis, (w + int(xg), int(yg)), 2, (0, 0, 255), -1)
 
       image_points.append(img_kp.pt)
-      object_points.append(known_globe_point(known_kp))
+      # europe
+      object_points.append(known_globe_point(known_kp.pt, 54., 15.))
 
     if len(image_points) > 50:
       obj = np.array(object_points, dtype=np.float32)
