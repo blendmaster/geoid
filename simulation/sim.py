@@ -173,9 +173,10 @@ while True:
   h, w, _ = img.shape
   camera_intrinsics = K(w, h)
 
-  vis = np.zeros((ksize, w + ksize, 3), dtype=np.uint8)
-  vis[0:h, 0:w, :] = img
-  vis[0:ksize, w:w+ksize, :] = known
+  #vis = np.zeros((ksize, w + ksize, 3), dtype=np.uint8)
+  #vis[0:h, 0:w, :] = img
+  #vis[0:ksize, w:w+ksize, :] = known
+  vis = img
 
   img_keypoints, img_desc = detector.detectAndCompute(img, None)
   # XXX why does this happen
@@ -194,7 +195,7 @@ while True:
       xim, yim = img_kp.pt
       xg, yg = known_kp.pt
       cv2.circle(vis, (int(xim), int(yim)), 2, (0, 0, 255), -1)
-      cv2.circle(vis, (w + int(xg), int(yg)), 2, (0, 0, 255), -1)
+      #cv2.circle(vis, (w + int(xg), int(yg)), 2, (0, 0, 255), -1)
 
       image_points.append(img_kp.pt)
       # europe
@@ -225,6 +226,17 @@ while True:
                                         )
 
       if inliers != None:
+
+        # block out globe
+        # find radius
+        norvec = np.array([[0.0], [0.0], [0.0]])
+        [[[x_c, y_c]]], _ = cv2.projectPoints(np.array([(0., 0., 0.)]), norvec, tvec, camera_intrinsics, None)
+        [[[x_n, y_n]]], _ = cv2.projectPoints(np.array([(0., 1., 0.)]), norvec, tvec, camera_intrinsics, None)
+
+        radius = int(np.sqrt((x_c - x_n)**2 + (y_c - y_n)**2))
+
+        cv2.circle(vis, (int(x_c), int(y_c)), radius, (255, 0, 0), -1)
+
         for i in inliers:
           xim, yim = image_points[i]
           #xg, yg = kp_pairs[i][0].pt
@@ -237,23 +249,31 @@ while True:
         [[est_rx], [est_ry], [est_rz]] = rvec
 
         ## draw equator/prime meridian
-        for j in range(-90, 91, 5):
+        for j in range(-90, 90, 5):
           x, y, z, _ = surface_point(0, j, model_globe)
           [[[x_im, y_im]]], _ = cv2.projectPoints(np.array([(x, y, z)]), rvec, tvec, camera_intrinsics, None)
 
-          cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
+          x2, y2, z2, _ = surface_point(0, j + 5, model_globe)
+          [[[x_im2, y_im2]]], _ = cv2.projectPoints(np.array([(x2, y2, z2)]), rvec, tvec, camera_intrinsics, None)
 
-        for j in range(-90, 91, 5):
+          cv2.line(vis, (int(x_im), int(y_im)), (int(x_im2), int(y_im2)), (255, 255, 255), 2)
+
+        for j in range(-90, 90, 5):
           x, y, z, _ = surface_point(j, 0, model_globe)
           [[[x_im, y_im]]], _ = cv2.projectPoints(np.array([(x, y, z)]), rvec, tvec, camera_intrinsics, None)
+          x2, y2, z2, _ = surface_point(j + 5, 0, model_globe)
+          [[[x_im2, y_im2]]], _ = cv2.projectPoints(np.array([(x2, y2, z2)]), rvec, tvec, camera_intrinsics, None)
 
-          cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
+          cv2.line(vis, (int(x_im), int(y_im)), (int(x_im2), int(y_im2)), (255, 255, 255), 2)
 
         ## draw edge of globe
-        for j in range(0, 361, 5):
+        for j in range(0, 360, 5):
           x, y, z, _ = surface_point(j, 90, model_globe)
           [[[x_im, y_im]]], _ = cv2.projectPoints(np.array([(x, y, z)]), rvec, tvec, camera_intrinsics, None)
-          cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
+          x2, y2, z2, _ = surface_point(j + 5, 90, model_globe)
+          [[[x_im2, y_im2]]], _ = cv2.projectPoints(np.array([(x2, y2, z2)]), rvec, tvec, camera_intrinsics, None)
+
+          cv2.line(vis, (int(x_im), int(y_im)), (int(x_im2), int(y_im2)), (255, 255, 255), 2)
   dt = clock() - t
 
   draw_str(vis, (20, 20), 'time: %.1f ms' % (dt*1000))
