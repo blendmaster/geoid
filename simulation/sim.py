@@ -14,20 +14,8 @@ height = 480.0
 
 def project(point3d, camera_intrinsics, camera_extrinsics):
   x, y, z = point3d
-
-  #[[x_c], [y_c], [z_c]] = np.dot(camera_extrinsics, np.array([[x], [y], [z], [1]]))
-
-  #leng = np.sqrt(x_c**2 + y_c**2 + z_c**2)
-
-  #x_c = x_c / leng
-  #y_c = y_c / leng
-  #z_c = z_c / leng
-
   projection_matrix = np.dot(camera_intrinsics, camera_extrinsics)
   [[x1], [x2], [x3]] = np.dot(projection_matrix, np.array([[x], [y], [z], [1]]))
-
-  #[[x_im], [y_im], [z_im]] = np.dot(camera_intrinsics, np.array([[x_c], [y_c], [z_c]]))
-
   x_im = x1 / x3
   y_im = x2 / x3
 
@@ -97,14 +85,6 @@ def simulated_image(points, camera_intrinsics, camera_extrinsics, globe_pose):
 
   img = np.zeros((height, width, 3), np.uint8)
 
-  #points = []
-  #for x in range(-20, 21, 4):
-    #for y in range(-20, 21, 4):
-      #for z in range(-20, 21, 4):
-        #points.append((x / 10.0, y / 10.0, 19 + z / 10.0,
-          #(((x + 10) / 20.0) * 255, ((y + 10) / 20.0) * 255, 127 +
-            #((z + 10) / 20.0) * 127)))
-
   camera_pos = np.array([camera_extrinsics[0][3],
                          camera_extrinsics[1][3],
                          camera_extrinsics[2][3]])
@@ -113,18 +93,10 @@ def simulated_image(points, camera_intrinsics, camera_extrinsics, globe_pose):
     lat, lon, (r,g,b) = point
     x, y, z, norm = surface_point(point[0], point[1], globe_pose)
 
-    #x, y, z, (r, g, b) = point
-
-    #print("norm: (%f, %f, %f)" % (norm[0], norm[1], norm[2]))
-
     x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
 
     eye_ray = np.array([x, y, z]) - camera_pos
     eye_ray = eye_ray / np.linalg.norm(eye_ray)
-    #print("eye_ray:", eye_ray)
-
-    #print("x: %f, y: %f" % (x_im, y_im))
-
     # peturb randomly
     x_im = x_im + random.randint(0, 10)
     y_im = y_im + random.randint(0, 10)
@@ -141,144 +113,7 @@ def simulated_image(points, camera_intrinsics, camera_extrinsics, globe_pose):
                      int(-1) # stroke thickness (negative means filled in)
                      )
 
-  #for some amount of randomness:
-    #add random blotches
-
-  #add noise to img
-
   return img
-
-def estimated_pose(camera_intrinsics, camera_extrinsics, image, points, globe_pose):
-  """The estimated pose from an image, using opencv"""
-
-  camera_pos = np.array([camera_extrinsics[0][3],
-                         camera_extrinsics[1][3],
-                         camera_extrinsics[2][3]])
-
-  radius, gx, gy, gz, _, _, _ = globe_pose
-
-  # model globe pose
-  model_globe = (radius, 0, 0, 0, 0, 0, 0)
-
-  gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-
-  thresholded = cv2.adaptiveThreshold(
-      gray,
-      255,
-      cv2.ADAPTIVE_THRESH_MEAN_C,
-      cv2.THRESH_BINARY,
-      7,
-      0)
-
-  # remove noise if needed (maybe with nice thresholding / camera exposure, it
-  # won't be necessary
-  #cv.open(image)
-
-  contours, hierarchy = cv2.findContours(
-      thresholded,
-      cv2.RETR_TREE,
-      cv2.CHAIN_APPROX_SIMPLE)
-
-  object_points = []
-  image_points = []
-  centroids = np.zeros_like(thresholded)
-  for i, contour in enumerate(contours):
-    m = cv2.moments(contour)
-    xim, yim = ( m['m10']/m['m00'],m['m01']/m['m00'] )
-    cv2.circle(centroids, (int(xim), int(yim)), 1, 255, -1)
-
-    # find average color in original image
-    mask = np.zeros_like(thresholded, dtype=np.uint8)
-    cv2.drawContours(mask, contours, i, 1, -1)
-    b, g, r, _ = cv2.mean(image, mask)
-
-    # find matches in trained points
-    for j, point in enumerate(points):
-      lat, lon, (pr, pg, pb) = point
-
-      dist = np.sqrt((float(pr) - r)**2 + (float(pg) - g)**2 + (float(pb) - b)**2)
-      if dist < 30:
-        x, y, z, _ = surface_point(lat, lon, model_globe)
-        object_points.append([x, y, z])
-        image_points.append([xim, yim])
-
-  cv2.namedWindow('threshold')
-  cv2.imshow('threshold', centroids)
-
-  print(object_points)
-  print(image_points)
-
-  # in model coordinates
-  #object_points = []
-  #image_points = []
-
-  #for point in points:
-    #lat, lon, (r,g,b) = point
-    #x, y, z, norm = surface_point(point[0], point[1], globe_pose)
-
-    #xm, ym, zm, _ = surface_point(point[0], point[1], model_globe)
-
-    #x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
-
-    #eye_ray = np.array([x, y, z]) - camera_pos
-    #eye_ray = eye_ray / np.linalg.norm(eye_ray)
-
-    ## peturb randomly
-    ##x_im = x_im + random.randint(0, 10)
-    ##y_im = y_im + random.randint(0, 10)
-
-    ## if in range
-    #if 0 < x_im < width and 0 < y_im < height:
-      ## if on front face
-      #if np.dot(eye_ray, norm) > 0:
-        ## add to points
-        #image_points.append([int(x_im), int(y_im)])
-
-        ## subtract globe center
-        #object_points.append([xm * 1.0, ym * 1.0, zm * 1.0])
-
-  #print(object_points)
-  #print(image_points)
-
-  rvec, tvec, inliers = cv2.solvePnPRansac(np.array(object_points, dtype=np.float32), np.array(image_points, dtype=np.float32),
-                                    camera_intrinsics, None)
-
-  #print tvec
-
-  [[est_x], [est_y], [est_z]] = tvec
-  [[est_rx], [est_ry], [est_rz]] = rvec
-
-  return (radius, est_x, est_y, est_z, est_rx, est_ry, est_rz)
-
-def simulate(camera_intrinsics, camera_extrinsics, globe_pose, points):
-  """Simulate capturing an image of the globe and its points, then estimating
-  the pose of the globe from the image."""
-
-  image = simulated_image(points,
-                          camera_intrinsics,
-                          camera_extrinsics,
-                          globe_pose)
-
-  estimated_globe_pose = estimated_pose(camera_intrinsics,
-                                        camera_extrinsics,
-                                        image, points, globe_pose)
-
-  print(estimated_globe_pose)
-
-  # draw real outline of globe
-  x_im_or, y_im_or = project((globe_pose[1], globe_pose[2], globe_pose[3]), camera_intrinsics, camera_extrinsics)
-  x_im_ed, y_im_ed = project((globe_pose[1] + globe_pose[0], globe_pose[2], globe_pose[3]), camera_intrinsics, camera_extrinsics)
-  radius_im = np.sqrt((x_im_ed - x_im_or)**2 + (y_im_ed - y_im_or)**2)
-  cv2.circle(image, (int(x_im_or), int(y_im_or)), int(radius_im), (255, 255, 255), 1)
-
-  # draw estimated outline of the globe
-  x_im_or, y_im_or = project((estimated_globe_pose[1], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
-  x_im_ed, y_im_ed = project((estimated_globe_pose[1] + estimated_globe_pose[0], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
-  radius_im = np.sqrt((x_im_ed - x_im_or)**2 + (y_im_ed - y_im_or)**2)
-  cv2.circle(image, (int(x_im_or), int(y_im_or)), int(radius_im), (255, 0, 0), 1)
-
-  cv2.namedWindow('w')
-  cv2.imshow('w', image)
 
 fov = 30.41 # of the rear camera, in degrees, across the diagonal
 
@@ -310,69 +145,11 @@ camera_rot_translate = np.hstack((camera_rot, camera_world_pos))
 
 camera_extrinsics = np.linalg.inv(
     np.vstack((camera_rot_translate, np.array([0, 0, 0, 1]))))[0:3, :]
-
-#print(camera_extrinsics)
-#print(camera_intrinsics)
-#print(np.dot(camera_intrinsics, camera_extrinsics))
-
 # radius, x, y, z, xrot (around x axis), yrot, zrot
 globe_pose = (1, 0, 0, 30, 30, 30, 0)
+model_globe = (1, 0, 0, 0, 0, 0, 0)
 
-# points on a globe by latitude and longitude, and color (rgb)
-points = [
-  (51.5171, -0.1062, (255, 255, 255)), # london
-  (28.6667, 77.2167, (255, 0, 0)), # new delhi
-  (31.7833, 35.2167, (0, 255, 0)),  # jerusalem
-  (40.7142, -74.0064, (0, 0, 255)), # new york
-  (33.5992, -7.6200, (127, 0, 0)), # casablanca
-  (-33.9767, 18.4244, (255, 0, 255)), # cape town
-  (-22.9083, -43.2436, (255, 255, 0)), # rio de janeiro
-]
-
-# prime/equator image is cenetered at lat lon (0,0)
-# 2016x2016
-# features extracted from it can then be changed to lat,lon pairs from image x, y
-# easily
-# then when features are matched in the camera image, they can be converted
-# to model (globe) x, y, z and used in solvePnPRansac instead of 
-# findHomography()
-def to_globe(im):
-  ...
-
-
-
-
-#test points
-
-#for i in range(-90, 91, 10):
-
-#for j in range(0, 361, 10):
-  #points.append((0, j, ((j + 90.0) / 180.0 * 255, (j + 90.0) / 180.0 * 255, 255)))
-#for j in range(-90, 90, 10):
-  #points.append((j, 0, ((j + 90.0) / 180.0 * 255, (j + 90.0) / 180.0 * 255, 255)))
-
-#simulate(camera_intrinsics, camera_extrinsics, globe_pose, points)
-
-cam = create_capture(0)
-
-cam.set(cv2.cv.CV_CAP_PROP_BRIGHTNESS, 0.5)
-cam.set(cv2.cv.CV_CAP_PROP_EXPOSURE, -0.9)
-cam.set(cv2.cv.CV_CAP_PROP_GAIN, 0)
-cam.set(cv2.cv.CV_CAP_PROP_SATURATION, 1)
-
-#def nothing(_=None):
-  #return
-
-cv2.namedWindow('camera')
-#cv2.createTrackbar('h', 'camera', 0, 255, nothing)
-#cv2.createTrackbar('hm', 'camera', 255, 255, nothing)
-#cv2.createTrackbar('s', 'camera', 0, 255, nothing)
-#cv2.createTrackbar('sm', 'camera', 255, 255, nothing)
-#cv2.createTrackbar('v', 'camera', 0, 255, nothing)
-#cv2.createTrackbar('vm', 'camera', 255, 255, nothing)
-#cv2.createTrackbar('op', 'camera', 2, 20, nothing)
-
-detector = cv2.ORB( nfeatures = 1000 )
+detector = cv2.ORB( nfeatures = 3500 )
 FLANN_INDEX_KDTREE = 1
 FLANN_INDEX_LSH    = 6
 flann_params= dict(algorithm = FLANN_INDEX_LSH,
@@ -381,36 +158,90 @@ flann_params= dict(algorithm = FLANN_INDEX_LSH,
                    multi_probe_level = 1) #2
 matcher = cv2.FlannBasedMatcher(flann_params, {})  # bug : need to pass empty dict (#1329)
 
-# grab training data
-us = cv2.imread('us.png', 1)
-canada = cv2.imread('canada.png', 1)
-centralam = cv2.imread('centralam.png', 1)
+# prime/equator image is cenetered at lat lon (0,0)
+# 2016x2016
+# features extracted from it can then be changed to lat,lon pairs from image x, y
+# easily
+# then when features are matched in the camera image, they can be converted
+# to model (globe) x, y, z and used in solvePnPRansac instead of 
+# findHomography()
+known = cv2.imread('prime_equator.jpg', 1)
+ksize = known.shape[0] + 0.0
+hsize = ksize / 2.
+# masked with white, but just in case
+mask = np.zeros_like(known[:, :, 1], dtype=np.uint8)
+cv2.circle(mask, (int(hsize), int(hsize)), int(hsize), 255, -1)
+known_keypoints, known_descriptors = detector.detectAndCompute(known, mask)
+# translate all keypoints into x, y, z model globe
+def known_globe_point(kp):
+  xim, yim = kp.pt
 
-us_kp, us_desc = detector.detectAndCompute(us, None)
-canada_kp, canada_desc = detector.detectAndCompute(canada, None)
-centralam_kp, centralam_desc = detector.detectAndCompute(centralam, None)
+  sinLat = (hsize - yim) / hsize
+  latRad = np.arcsin(sinLat)
+  lat = latRad * 180. / np.pi
 
-# lat, lon mapping from image points, assuming flat images
-us_rect = ((48.969, -118.780), (26.946, -85.834))
-canada_rect = ((64.597, -152.851), (39.502, -71.480))
-centralam_rect = ((31.26, -114.82), (2.8733, -67.379))
+  cosLatSinLon = (hsize - xim) / hsize
+  sinLon = cosLatSinLon / np.cos(latRad)
+  lonRad = np.arcsin(sinLon)
 
-def to_globe(im, imshape, rect):
-  x, y = im
-  height, width, _ = imshape
+  lon = lonRad * 180. / np.pi
 
-  (lat1, lon1), (lat2, lon2) = rect
+  x, y, z, _ = surface_point(lat, lon, model_globe)
 
-  latheight = lat2 - lat1
-  lonwidth = lon2 - lon1
+  return (x, y, z)
+  #print (x, xim / 1008. - 1)
+  #print (y, 1 - yim / 1008.)
 
-  imwr = float(x) / float(width)
-  lon = lon1 + imwr * lonwidth
+print len(known_keypoints)
 
-  imhr = float(y) / float(height)
-  lat = lat1 + imhr * latheight
+#known_descriptors = np.array(known_descriptors, dtype=np.uint8)
+#for kp in known_keypoints:
+  #pt = kp.pt
+  #cv2.circle(known, (int(pt[0]), int(pt[1])), 3, (255, 0, 0), -1)
 
-  return (lat, lon)
+#cv2.namedWindow('globe')
+#cv2.imshow('globe', known)
+#cv2.waitKey(0)
+#sys.exit(1)
+
+cam = create_capture(0)
+
+cam.set(cv2.cv.CV_CAP_PROP_BRIGHTNESS, 0.5)
+cam.set(cv2.cv.CV_CAP_PROP_EXPOSURE, -0.9)
+cam.set(cv2.cv.CV_CAP_PROP_GAIN, 0)
+cam.set(cv2.cv.CV_CAP_PROP_SATURATION, 1)
+cv2.namedWindow('camera')
+
+## grab training data
+#us = cv2.imread('us.png', 1)
+#canada = cv2.imread('canada.png', 1)
+#centralam = cv2.imread('centralam.png', 1)
+
+#us_kp, us_desc = detector.detectAndCompute(us, None)
+#canada_kp, canada_desc = detector.detectAndCompute(canada, None)
+#centralam_kp, centralam_desc = detector.detectAndCompute(centralam, None)
+
+## lat, lon mapping from image points, assuming flat images
+#us_rect = ((48.969, -118.780), (26.946, -85.834))
+#canada_rect = ((64.597, -152.851), (39.502, -71.480))
+#centralam_rect = ((31.26, -114.82), (2.8733, -67.379))
+
+#def to_globe(im, imshape, rect):
+  #x, y = im
+  #height, width, _ = imshape
+
+  #(lat1, lon1), (lat2, lon2) = rect
+
+  #latheight = lat2 - lat1
+  #lonwidth = lon2 - lon1
+
+  #imwr = float(x) / float(width)
+  #lon = lon1 + imwr * lonwidth
+
+  #imhr = float(y) / float(height)
+  #lat = lat1 + imhr * latheight
+
+  #return (lat, lon)
 
 #for i, kp in enumerate(us_kp):
   #if i % 100 != 0:
@@ -437,98 +268,86 @@ def filter_matches(kp1, kp2, matches, ratio = 0.75):
     kp_pairs = zip(mkp1, mkp2)
     return p1, p2, kp_pairs
 
+radius = 1
+
 while True:
   ret, img = cam.read()
   t = clock()
 
-  vis = img
+  h, w, _ = img.shape
+  vis = np.zeros((ksize, w + ksize, 3), dtype=np.uint8)
+  vis[0:h, 0:w, :] = img
+  vis[0:ksize, w:w+ksize, :] = known
 
-  img_kp, img_desc = detector.detectAndCompute(img, None)
+  img_keypoints, img_desc = detector.detectAndCompute(img, None)
+  # XXX why does this happen
+  if img_desc != None:
 
-  us_raw_matches = matcher.knnMatch(img_desc, trainDescriptors=us_desc, k = 2) #2
-  p1, p2, kp_pairs_us = filter_matches(img_kp, us_kp, us_raw_matches)
+    raw_matches = matcher.knnMatch(known_descriptors, trainDescriptors=img_desc, k=2)
+    p1, p2, kp_pairs = filter_matches(known_keypoints, img_keypoints, raw_matches)
+    #raw_matches = matcher.knnMatch(img_desc, trainDescriptors=known_descriptors, k=2)
+    #p1, p2, kp_pairs = filter_matches(img_keypoints, known_keypoints, raw_matches)
 
-  canada_raw_matches = matcher.knnMatch(img_desc, trainDescriptors=canada_desc, k = 2) #2
-  p1, p2, kp_pairs_canada = filter_matches(img_kp, canada_kp, canada_raw_matches)
+    object_points = []
+    image_points = []
+    for known_kp, img_kp in kp_pairs:
+    #for img_kp, known_kp in kp_pairs:
+      xim, yim = img_kp.pt
+      xg, yg = known_kp.pt
+      cv2.circle(vis, (int(xim), int(yim)), 2, (0, 0, 255), -1)
+      cv2.circle(vis, (w + int(xg), int(yg)), 2, (0, 0, 255), -1)
 
-  centralam_raw_matches = matcher.knnMatch(img_desc, trainDescriptors=centralam_desc, k = 2) #2
-  p1, p2, kp_pairs_centralam = filter_matches(img_kp, centralam_kp, centralam_raw_matches)
+      image_points.append(img_kp.pt)
+      object_points.append(known_globe_point(known_kp))
 
-  object_points = []
-  image_points = []
-  matches_from_us = np.int32([kpp[0].pt for kpp in kp_pairs_us])
-  for p in matches_from_us:
-    cv2.circle(vis, (p[0], p[1]), 2, (255, 0, 0), -1)
-    image_points.append(p)
-    object_points.append(to_globe(p, us.shape, us_rect))
+    if len(image_points) > 50:
+      obj = np.array(object_points, dtype=np.float32)
+      im = np.array(image_points, dtype=np.float32)
 
-  matches_from_canada = np.int32([kpp[0].pt for kpp in kp_pairs_canada])
-  for p in matches_from_canada:
-    cv2.circle(vis, (p[0], p[1]), 2, (0, 255, 0), -1)
-    image_points.append(p)
-    object_points.append(to_globe(p, canada.shape, canada_rect))
+      N = obj.shape[0]
 
-  matches_from_centralam = np.int32([kpp[0].pt for kpp in kp_pairs_centralam])
-  for p in matches_from_centralam:
-    cv2.circle(vis, (p[0], p[1]), 2, (0, 0, 255), -1)
-    image_points.append(p)
-    object_points.append(to_globe(p, centralam.shape, centralam_rect))
+      rvec, tvec, inliers = cv2.solvePnPRansac(obj.reshape([1, N, 3]), im.reshape([1, N, 2]),
+                                        camera_intrinsics, None 
+                                        )
 
-  radius = 1
-  model_globe = (radius, 0, 0, 0, 0, 0, 0)
+      print rvec
 
-  globe_points = []
-  for lat, lon in object_points:
-    x, y, z, _ = surface_point(lat, lon, model_globe)
+      if inliers != None:
+        for i in inliers:
+          xim, yim = image_points[i]
+          xg, yg = kp_pairs[i][0].pt
 
-    globe_points.append((x, y, z))
+          cv2.circle(vis, (int(xim), int(yim)), 2, (0, 255, 0), -1)
+          cv2.circle(vis, (w + int(xg), int(yg)), 2, (0, 255, 0), -1)
+          cv2.line(vis, (int(xim), int(yim)), (w + int(xg), int(yg)), (0, 255, 0))
 
-  if len(image_points) > 100:
-    obj = np.array(globe_points, dtype=np.float32)
-    im = np.array(image_points, dtype=np.float32)
+      [[est_x], [est_y], [est_z]] = tvec
+      [[est_rx], [est_ry], [est_rz]] = rvec
 
-    N = obj.shape[0]
+      estimated_globe_pose = (radius, est_x, est_y, est_z, est_rx, est_ry, est_rz)
+      # draw estimated outline of the globe
+      x_im_or, y_im_or = project((estimated_globe_pose[1], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
+      x_im_ed, y_im_ed = project((estimated_globe_pose[1] + estimated_globe_pose[0], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
+      radius_im = np.sqrt((x_im_ed - x_im_or)**2 + (y_im_ed - y_im_or)**2)
+      if radius_im < 3000:
+        cv2.circle(vis, (int(x_im_or), int(y_im_or)), int(radius_im), (255, 255, 255), 1)
 
-    rvec, tvec, inliers = cv2.solvePnPRansac(obj.reshape([1, N, 3]), im.reshape([1, N, 2]),
-                                      camera_intrinsics, None ,flags=cv2.CV_EPNP
-                                      )
+        ## draw equator/prime meridian
+        for j in range(0, 361, 10):
+          x, y, z, _ = surface_point(0, j, estimated_globe_pose)
+          x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
 
-    #print tvec
+          cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
 
-    if inliers != None:
-      for i in inliers:
-        p = image_points[i]
-        cv2.circle(vis, (p[0], p[1]), 2, (255, 255, 255), -1)
-        o = object_points[i]
-        draw_str(vis, p, '%.1f %.1f' % (o[0], o[1]))
+        for j in range(-90, 90, 10):
+          x, y, z, _ = surface_point(j, 0, estimated_globe_pose)
+          x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
 
-
-    [[est_x], [est_y], [est_z]] = tvec
-    [[est_rx], [est_ry], [est_rz]] = rvec
-
-    estimated_globe_pose = (radius, est_x, est_y, est_z, est_rx, est_ry, est_rz)
-    # draw estimated outline of the globe
-    x_im_or, y_im_or = project((estimated_globe_pose[1], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
-    x_im_ed, y_im_ed = project((estimated_globe_pose[1] + estimated_globe_pose[0], estimated_globe_pose[2], estimated_globe_pose[3]), camera_intrinsics, camera_extrinsics)
-    radius_im = np.sqrt((x_im_ed - x_im_or)**2 + (y_im_ed - y_im_or)**2)
-    if radius_im < 3000:
-      cv2.circle(vis, (int(x_im_or), int(y_im_or)), int(radius_im), (255, 255, 255), 1)
-
-      ## draw equator/prime meridian
-      for j in range(0, 361, 10):
-        x, y, z, _ = surface_point(0, j, estimated_globe_pose)
-        x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
-
-        cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
-
-      for j in range(-90, 90, 10):
-        x, y, z, _ = surface_point(j, 0, estimated_globe_pose)
-        x_im, y_im = project((x, y, z), camera_intrinsics, camera_extrinsics)
-
-        cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
+          cv2.circle(vis, (int(x_im), int(y_im)), 1, (255, 255, 255), -1)
   dt = clock() - t
 
   draw_str(vis, (20, 20), 'time: %.1f ms' % (dt*1000))
+
   cv2.imshow('camera', vis)
 
   if 0xFF & cv2.waitKey(5) == 27:
