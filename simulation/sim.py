@@ -104,7 +104,8 @@ matcher = cv2.FlannBasedMatcher(flann_params, {})  # bug : need to pass empty di
 # then when features are matched in the camera image, they can be converted
 # to model (globe) x, y, z and used in solvePnPRansac instead of
 # findHomography()
-known = cv2.imread('54x15.jpg', 1)
+known = cv2.imread('prime_equator.jpg', 1)
+eur_known = cv2.imread('54x15.jpg', 1)
 
 # all training images are this size
 ksize = 640.
@@ -114,6 +115,7 @@ hsize = 320.
 mask = np.zeros_like(known[:, :, 1], dtype=np.uint8)
 cv2.circle(mask, (int(hsize), int(hsize)), int(hsize), 255, -1)
 known_keypoints, known_descriptors = detector.detectAndCompute(known, mask)
+eur_kp, eur_desc = detector.detectAndCompute(eur_known, mask)
 
 # translate all keypoints into x, y, z model globe, centered at some lat, lon
 def known_globe_point(p, centerLat, centerLon):
@@ -132,7 +134,7 @@ def known_globe_point(p, centerLat, centerLon):
   xn, yn, zn, _ = surface_point(lat, lon, model_globe)
 
   xrot = -centerLat
-  yrot = -centerLon
+  yrot = centerLon
 
   rot = np.dot(rot_x(xrot), rot_y(yrot))
   [[x], [y], [z]] = np.dot(rot, np.array([[xn], [yn], [zn]]))
@@ -181,8 +183,9 @@ while True:
 
     raw_matches = matcher.knnMatch(known_descriptors, trainDescriptors=img_desc, k=2)
     p1, p2, kp_pairs = filter_matches(known_keypoints, img_keypoints, raw_matches)
-    #raw_matches = matcher.knnMatch(img_desc, trainDescriptors=known_descriptors, k=2)
-    #p1, p2, kp_pairs = filter_matches(img_keypoints, known_keypoints, raw_matches)
+
+    raw_matches = matcher.knnMatch(eur_desc, trainDescriptors=img_desc, k=2)
+    p1, p2, eur_pairs = filter_matches(eur_kp, img_keypoints, raw_matches)
 
     object_points = []
     image_points = []
@@ -195,7 +198,20 @@ while True:
 
       image_points.append(img_kp.pt)
       # europe
+      object_points.append(known_globe_point(known_kp.pt, 0., 0.))
+
+    for known_kp, img_kp in eur_pairs:
+    #for img_kp, known_kp in kp_pairs:
+      xim, yim = img_kp.pt
+      #xg, yg = known_kp.pt
+      cv2.circle(vis, (int(xim), int(yim)), 2, (0, 0, 255), -1)
+      #cv2.circle(vis, (w + int(xg), int(yg)), 2, (0, 0, 255), -1)
+
+      image_points.append(img_kp.pt)
+      # europe
       object_points.append(known_globe_point(known_kp.pt, 54., 15.))
+
+    print len(image_points)
 
     if len(image_points) > 50:
       obj = np.array(object_points, dtype=np.float32)
@@ -208,14 +224,14 @@ while True:
                                         flags=cv2.CV_EPNP
                                         )
 
-      if inliers != None and len(inliers) > 50:
+      if inliers != None:
         for i in inliers:
           xim, yim = image_points[i]
-          xg, yg = kp_pairs[i][0].pt
+          #xg, yg = kp_pairs[i][0].pt
 
           cv2.circle(vis, (int(xim), int(yim)), 2, (0, 255, 0), -1)
-          cv2.circle(vis, (w + int(xg), int(yg)), 2, (0, 255, 0), -1)
-          cv2.line(vis, (int(xim), int(yim)), (w + int(xg), int(yg)), (0, 255, 0))
+          #cv2.circle(vis, (w + int(xg), int(yg)), 2, (0, 255, 0), -1)
+          #cv2.line(vis, (int(xim), int(yim)), (w + int(xg), int(yg)), (0, 255, 0))
 
         [[est_x], [est_y], [est_z]] = tvec
         [[est_rx], [est_ry], [est_rz]] = rvec
