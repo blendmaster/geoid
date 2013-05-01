@@ -65,6 +65,8 @@ programs <<<
 
       varying vec2 tex;
 
+      uniform vec2 randomOffset;
+
       // transform packed texture field
       vec2 fieldAt(vec2 coords) {
         vec3 val = texture2D(field, coords).xyz;
@@ -80,7 +82,7 @@ programs <<<
 
       void main() {
         if (isWater(tex)) {
-          vec2 currentPosition = tex;
+          vec2 currentPosition = tex + randomOffset;
           vec2 field = fieldAt(tex);
 
           float h = 10.0;
@@ -124,21 +126,21 @@ programs <<<
           vec2 pos = tex;
 
           vec2 field = orthogonalFieldAt(pos);
-          for(int i = 0; i < 25; ++i) {
+          for(int i = 0; i < 15; ++i) {
             pixel = pixel + texture2D(transportedNoise, pos).rgb;
             pos = pos - field * h / size;
             field = orthogonalFieldAt(pos);
           }
           pos = tex;
           field = orthogonalFieldAt(pos);
-          for(int i = 0; i < 25; ++i) {
+          for(int i = 0; i < 15; ++i) {
             pixel = pixel + texture2D(transportedNoise, pos).rgb;
             pos = pos + field * h / size;
             field = orthogonalFieldAt(pos);
           }
 
           // average
-          pixel = pixel / 50.0;
+          pixel = pixel / 30.0;
 
           gl_FragColor = vec4(pixel, 1.0);
         } else {
@@ -191,11 +193,23 @@ programs <<<
       uniform sampler2D orthogonalLIC;
       uniform sampler2D advected;
 
+      uniform sampler2D oceanCurrent;
+
+      bool isWater(vec2 coords) {
+        vec3 val = texture2D(oceanCurrent, coords).xyz;
+        return val.z != 0.0;
+      }
+
       varying vec2 tex;
 
       void main() {
-        gl_FragColor = texture2D(orthogonalLIC, tex) * 0.10
-                     + texture2D(advected     , tex) * 0.90;
+        if (isWater(tex)) {
+          gl_FragColor = texture2D(orthogonalLIC, tex) * 0.05
+                       + texture2D(advected     , tex) * 0.95;
+
+        } else {
+          gl_FragColor = vec4(0, 0.5, 0., 1.0);
+        }
       }
     """
 

@@ -45,8 +45,8 @@ var rotation, current-rot, fov, distance
 
 reset-stage!
 
-$ \zoom-in  .addEventListener \click !-> --fov; draw!
-$ \zoom-out .addEventListener \click !-> ++fov; draw!
+$ \zoom-in  .addEventListener \click !-> --fov
+$ \zoom-out .addEventListener \click !-> ++fov
 
 ctx = document.createElement \canvas .getContext \2d
 
@@ -184,6 +184,9 @@ export draw = !->
   gl.bindTexture gl.TEXTURE_2D, texture
   gl.getUniformLocation p.noise-transport, \texture
     gl.uniform1i &, 0
+  
+  # use random offset of noise
+  uniform gl, p.noise-transport, \randomOffset \2f Math.random!, Math.random!
 
   gl.activeTexture gl.TEXTURE1
   gl.bindTexture gl.TEXTURE_2D, noise-tex
@@ -265,6 +268,11 @@ export draw = !->
   gl.getUniformLocation p.blend, \advected
     gl.uniform1i &, 1
 
+  gl.activeTexture gl.TEXTURE2
+  gl.bindTexture gl.TEXTURE_2D, texture
+  gl.getUniformLocation p.blend, \oceanCurrent
+    gl.uniform1i &, 2
+
   bind-buffer gl, p.orthogonal-lic, \vertexCoord, buffers.basic-quad, 2
   bind-buffer gl, p.orthogonal-lic, \texCoord, buffers.basic-quad-tex, 2
 
@@ -303,6 +311,11 @@ export draw = !->
 
   gl.bindBuffer ELEMENT_ARRAY_BUFFER, buffers.idx
   gl.drawElements TRIANGLES, num-triangles, UNSIGNED_SHORT, 0
+
+  requestAnimationFrame draw
+
+window.requestAnimationFrame = window.mozRequestAnimationFrame
+                            or window.webkitRequestAnimationFrame
 
 # load texture
 texture = gl.createTexture!
@@ -355,8 +368,6 @@ canvas
         mat4.identity!
         angle
         axis
-
-      do draw
 
     &addEventListener \mousemove rotate
 

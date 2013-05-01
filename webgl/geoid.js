@@ -33,11 +33,9 @@ original commented source there. */
   resetStage();
   $('zoom-in').addEventListener('click', function(){
     --fov;
-    draw();
   });
   $('zoom-out').addEventListener('click', function(){
     ++fov;
-    draw();
   });
   ctx = document.createElement('canvas').getContext('2d');
   function genNoise(width, height){
@@ -134,7 +132,7 @@ original commented source there. */
     blend: load('blend', gl)
   };
   out$.draw = draw = function(){
-    var x1$, x2$, x3$, x4$, x5$, x6$, x7$, x8$, x9$, x10$, x11$, x12$, x13$, rot, modelView, x14$;
+    var x1$, x2$, x3$, x4$, x5$, x6$, x7$, x8$, x9$, x10$, x11$, x12$, x13$, x14$, rot, modelView, x15$;
     gl.useProgram(p.noiseTransport);
     x1$ = gl;
     x1$.viewport(0, 0, 2048, 1024);
@@ -146,6 +144,7 @@ original commented source there. */
     gl.bindTexture(gl.TEXTURE_2D, texture);
     x2$ = gl.getUniformLocation(p.noiseTransport, 'texture');
     gl.uniform1i(x2$, 0);
+    uniform(gl, p.noiseTransport, 'randomOffset', '2f', Math.random(), Math.random());
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, noiseTex);
     x3$ = gl.getUniformLocation(p.noiseTransport, 'noise');
@@ -207,15 +206,19 @@ original commented source there. */
     gl.bindTexture(gl.TEXTURE_2D, advection.texture);
     x12$ = gl.getUniformLocation(p.blend, 'advected');
     gl.uniform1i(x12$, 1);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    x13$ = gl.getUniformLocation(p.blend, 'oceanCurrent');
+    gl.uniform1i(x13$, 2);
     bindBuffer(gl, p.orthogonalLic, 'vertexCoord', buffers.basicQuad, 2);
     bindBuffer(gl, p.orthogonalLic, 'texCoord', buffers.basicQuadTex, 2);
     gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.basicQuadIndices);
     gl.drawElements(TRIANGLES, 6, UNSIGNED_SHORT, 0);
     gl.useProgram(p.globe);
-    x13$ = gl;
-    x13$.viewport(0, 0, width, height);
-    x13$.enable(DEPTH_TEST);
-    x13$.enable(CULL_FACE);
+    x14$ = gl;
+    x14$.viewport(0, 0, width, height);
+    x14$.enable(DEPTH_TEST);
+    x14$.enable(CULL_FACE);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
     if (currentRot == null) {
@@ -230,13 +233,15 @@ original commented source there. */
     uniform(gl, p.globe, 'ModelViewMatrix', 'Matrix4fv', modelView);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, blend.texture);
-    x14$ = gl.getUniformLocation(p.globe, 'texture');
-    gl.uniform1i(x14$, 0);
+    x15$ = gl.getUniformLocation(p.globe, 'texture');
+    gl.uniform1i(x15$, 0);
     bindBuffer(gl, p.globe, 'modelCoord', buffers.modelCoord, 3);
     bindBuffer(gl, p.globe, 'texCoord', buffers.texCoord, 2);
     gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.idx);
     gl.drawElements(TRIANGLES, numTriangles, UNSIGNED_SHORT, 0);
+    requestAnimationFrame(draw);
   };
+  window.requestAnimationFrame = window.mozRequestAnimationFrame || window.webkitRequestAnimationFrame;
   texture = gl.createTexture();
   x1$ = new Image;
   x1$.onload = function(){
@@ -277,7 +282,6 @@ original commented source there. */
       angle = Math.acos(vec3.dot(cp, cq) / (vec3.length(cp) * vec3.length(cq)));
       axis = vec3.cross(cp, cq);
       currentRot = mat4.rotate(mat4.identity(), angle, axis);
-      draw();
     };
     x2$.addEventListener('mousemove', rotate);
     stop = (function(ran){
