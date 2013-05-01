@@ -64,12 +64,20 @@ const
   lonBands = 30
 
 noise-tex = gl.createTexture!
+
 noise-transport-framebuffer = gl.createFramebuffer!
 noise-transport-texture = gl.createTexture!
 # not sure if needed
 noise-transport-renderbuffer = gl.createRenderbuffer!
+
+orthogonal-lic-framebuffer = gl.createFramebuffer!
+orthogonal-lic-texture = gl.createTexture!
+# not sure if needed
+orthogonal-lic-renderbuffer = gl.createRenderbuffer!
+
+
 setup-buffers = !->
-  noise = gen-noise 1024 512
+  noise = gen-noise 2048 1024
 
   gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
   gl.bindTexture gl.TEXTURE_2D, noise-tex
@@ -80,9 +88,9 @@ setup-buffers = !->
 
   gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
   gl.bindTexture gl.TEXTURE_2D, noise-transport-texture
-  gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST
-  gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST
-  tw = 1024; th = 512
+  gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR
+  gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR
+  tw = 2048; th = 1024
   gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, tw, th, 0, gl.RGBA, gl.UNSIGNED_BYTE, null
 
   gl.bindFramebuffer gl.FRAMEBUFFER, noise-transport-framebuffer
@@ -94,6 +102,23 @@ setup-buffers = !->
     noise-transport-texture, 0
   gl.framebufferRenderbuffer gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER,
     noise-transport-renderbuffer
+
+  gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
+  gl.bindTexture gl.TEXTURE_2D, orthogonal-lic-texture
+  gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR
+  gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR
+  tw = 2048; th = 1024
+  gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, tw, th, 0, gl.RGBA, gl.UNSIGNED_BYTE, null
+
+  gl.bindFramebuffer gl.FRAMEBUFFER, orthogonal-lic-framebuffer
+  orthogonal-lic-renderbuffer
+    gl.bindRenderbuffer gl.RENDERBUFFER, &
+    gl.renderbufferStorage gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, tw, th
+
+  gl.framebufferTexture2D gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D,
+    orthogonal-lic-texture, 0
+  gl.framebufferRenderbuffer gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER,
+    orthogonal-lic-renderbuffer
 
   gl.bindFramebuffer gl.FRAMEBUFFER, null
 
@@ -153,11 +178,12 @@ num-triangles = latBands * lonBands * 6
 p =
   globe: load \globe gl
   noise-transport: load \noiseTransport gl
+  orthogonal-lic: load \orthogonalLic gl
 
 export draw = !->
   gl.useProgram p.noise-transport
   gl
-    &viewport 0 0 1024 512
+    &viewport 0 0 2048 1024
     &disable     DEPTH_TEST
     &disable     CULL_FACE
   gl.bindFramebuffer gl.FRAMEBUFFER, noise-transport-framebuffer
@@ -175,6 +201,30 @@ export draw = !->
 
   bind-buffer gl, p.noise-transport, \vertexCoord, buffers.basic-quad, 2
   bind-buffer gl, p.noise-transport, \texCoord, buffers.basic-quad-tex, 2
+
+  gl.bindBuffer ELEMENT_ARRAY_BUFFER, buffers.basic-quad-indices
+  gl.drawElements TRIANGLES, 6, UNSIGNED_SHORT, 0
+
+  gl.useProgram p.orthogonal-lic
+  gl
+    &viewport 0 0 2048 1024
+    &disable     DEPTH_TEST
+    &disable     CULL_FACE
+  gl.bindFramebuffer gl.FRAMEBUFFER, orthogonal-lic-framebuffer
+  gl.clear COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT
+
+  gl.activeTexture gl.TEXTURE0
+  gl.bindTexture gl.TEXTURE_2D, texture
+  gl.getUniformLocation p.orthogonal-lic, \oceanCurrent
+    gl.uniform1i &, 0
+
+  gl.activeTexture gl.TEXTURE1
+  gl.bindTexture gl.TEXTURE_2D, noise-transport-texture
+  gl.getUniformLocation p.orthogonal-lic, \transportedNoise
+    gl.uniform1i &, 1
+
+  bind-buffer gl, p.orthogonal-lic, \vertexCoord, buffers.basic-quad, 2
+  bind-buffer gl, p.orthogonal-lic, \texCoord, buffers.basic-quad-tex, 2
 
   gl.bindBuffer ELEMENT_ARRAY_BUFFER, buffers.basic-quad-indices
   gl.drawElements TRIANGLES, 6, UNSIGNED_SHORT, 0
@@ -202,7 +252,7 @@ export draw = !->
   uniform gl, p.globe, \ModelViewMatrix \Matrix4fv model-view
 
   gl.activeTexture gl.TEXTURE0
-  gl.bindTexture gl.TEXTURE_2D, noise-transport-texture
+  gl.bindTexture gl.TEXTURE_2D, orthogonal-lic-texture
   gl.getUniformLocation p.globe, \texture
     gl.uniform1i &, 0
 
