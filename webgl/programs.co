@@ -86,7 +86,6 @@ programs <<<
           float h = 10.0;
           vec2 advectedPosition = currentPosition + field * h / size;
 
-          //gl_FragColor = vec4(0, m, 0, 1.0);
           gl_FragColor = vec4(texture2D(noise, advectedPosition));
         } else {
           gl_FragColor = vec4(0, 0., 0., 1.0);
@@ -120,7 +119,7 @@ programs <<<
         if (isWater(tex)) {
           float h = 1.0;
 
-          // LIC backwards
+          // LIC backwards and forwards
           vec3 pixel = vec3(0.0, 0.0, 0.0);
           vec2 pos = tex;
 
@@ -147,3 +146,56 @@ programs <<<
         }
       }
     """
+  advection: shader-program do
+    vertex: plain-quad-vertex
+    fragment: """
+      precision mediump float;
+
+      uniform sampler2D oceanCurrent;
+      uniform sampler2D previousTexture;
+
+      varying vec2 tex;
+
+      // transform packed texture field
+      vec2 fieldAt(vec2 coords) {
+        vec3 val = texture2D(oceanCurrent, coords).xyz;
+        return vec2(val.x - 0.5, val.y - 0.5);
+      }
+
+      bool isWater(vec2 coords) {
+        vec3 val = texture2D(oceanCurrent, coords).xyz;
+        return val.z != 0.0;
+      }
+
+      vec2 size = vec2(1024., 512.);
+
+      void main() {
+        if (isWater(tex)) {
+          vec2 currentPosition = tex;
+          vec2 field = fieldAt(tex);
+
+          float h = 1.0;
+          vec2 advectedPosition = currentPosition + field * h / size;
+
+          gl_FragColor = vec4(texture2D(previousTexture, advectedPosition));
+        } else {
+          gl_FragColor = vec4(0, 0., 0., 1.0);
+        }
+      }
+    """
+  blend: shader-program do
+    vertex: plain-quad-vertex
+    fragment: """
+      precision mediump float;
+
+      uniform sampler2D orthogonalLIC;
+      uniform sampler2D advected;
+
+      varying vec2 tex;
+
+      void main() {
+        gl_FragColor = texture2D(orthogonalLIC, tex) * 0.10
+                     + texture2D(advected     , tex) * 0.90;
+      }
+    """
+

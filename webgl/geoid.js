@@ -2,7 +2,7 @@
 original commented source there. */
 (function(){
   "use strict";
-  var canvas, ref$, width, height, k, ref1$, v, x0$, rotation, currentRot, fov, distance, ctx, buffers, latBands, lonBands, noiseTex, noiseTransportFramebuffer, noiseTransportTexture, noiseTransportRenderbuffer, orthogonalLicFramebuffer, orthogonalLicTexture, orthogonalLicRenderbuffer, setupBuffers, numTriangles, p, draw, texture, x1$, pointUnder, x2$, out$ = typeof exports != 'undefined' && exports || this;
+  var canvas, ref$, width, height, k, ref1$, v, x0$, rotation, currentRot, fov, distance, ctx, buffers, latBands, lonBands, noiseTex, noiseTransport, orthogonalLic, advection, blend, setupBuffers, numTriangles, p, draw, texture, x1$, pointUnder, x2$, out$ = typeof exports != 'undefined' && exports || this;
   canvas = document.getElementById('canvas');
   ref$ = document.documentElement, canvas.width = ref$.clientWidth, canvas.height = ref$.clientHeight;
   width = canvas.width, height = canvas.height;
@@ -54,14 +54,37 @@ original commented source there. */
   latBands = 30;
   lonBands = 30;
   noiseTex = gl.createTexture();
-  noiseTransportFramebuffer = gl.createFramebuffer();
-  noiseTransportTexture = gl.createTexture();
-  noiseTransportRenderbuffer = gl.createRenderbuffer();
-  orthogonalLicFramebuffer = gl.createFramebuffer();
-  orthogonalLicTexture = gl.createTexture();
-  orthogonalLicRenderbuffer = gl.createRenderbuffer();
+  function imageProcessingSet(){
+    return {
+      framebuffer: gl.createFramebuffer(),
+      texture: gl.createTexture(),
+      renderbuffer: gl.createRenderbuffer()
+    };
+  }
+  function setupFramebuffer(arg$){
+    var framebuffer, renderbuffer, texture, tw, th, x1$;
+    framebuffer = arg$.framebuffer, renderbuffer = arg$.renderbuffer, texture = arg$.texture;
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    tw = 2048;
+    th = 1024;
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, tw, th, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    x1$ = renderbuffer;
+    gl.bindRenderbuffer(gl.RENDERBUFFER, x1$);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, tw, th);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, renderbuffer);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+  noiseTransport = imageProcessingSet();
+  orthogonalLic = imageProcessingSet();
+  advection = imageProcessingSet();
+  blend = imageProcessingSet();
   setupBuffers = function(){
-    var noise, tw, th, x1$, x2$, modelCoords, texCoords, lat, to$, theta, sT, cT, lon, to1$, phi, sP, cP, idx, to2$, to3$, fst, snd, x3$;
+    var noise, modelCoords, texCoords, lat, to$, theta, sT, cT, lon, to1$, phi, sP, cP, idx, to2$, to3$, fst, snd, x1$;
     noise = genNoise(2048, 1024);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.bindTexture(gl.TEXTURE_2D, noiseTex);
@@ -69,33 +92,10 @@ original commented source there. */
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.generateMipmap(gl.TEXTURE_2D);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.bindTexture(gl.TEXTURE_2D, noiseTransportTexture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    tw = 2048;
-    th = 1024;
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, tw, th, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, noiseTransportFramebuffer);
-    x1$ = noiseTransportRenderbuffer;
-    gl.bindRenderbuffer(gl.RENDERBUFFER, x1$);
-    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, tw, th);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, noiseTransportTexture, 0);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, noiseTransportRenderbuffer);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.bindTexture(gl.TEXTURE_2D, orthogonalLicTexture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    tw = 2048;
-    th = 1024;
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, tw, th, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, orthogonalLicFramebuffer);
-    x2$ = orthogonalLicRenderbuffer;
-    gl.bindRenderbuffer(gl.RENDERBUFFER, x2$);
-    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, tw, th);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, orthogonalLicTexture, 0);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, orthogonalLicRenderbuffer);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    setupFramebuffer(noiseTransport);
+    setupFramebuffer(orthogonalLic);
+    setupFramebuffer(advection);
+    setupFramebuffer(blend);
     modelCoords = [];
     texCoords = [];
     for (lat = 0, to$ = latBands; lat <= to$; ++lat) {
@@ -120,7 +120,7 @@ original commented source there. */
     }
     buffers.modelCoord = createBuffer(gl, new Float32Array(modelCoords));
     buffers.texCoord = createBuffer(gl, new Float32Array(texCoords));
-    buffers.idx = (x3$ = gl.createBuffer(), gl.bindBuffer(ELEMENT_ARRAY_BUFFER, x3$), gl.bufferData(ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), STATIC_DRAW), x3$);
+    buffers.idx = (x1$ = gl.createBuffer(), gl.bindBuffer(ELEMENT_ARRAY_BUFFER, x1$), gl.bufferData(ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), STATIC_DRAW), x1$);
     buffers.basicQuad = createBuffer(gl, new Float32Array([-1, -1, 1, -1, 1, 1, -1, 1]));
     buffers.basicQuadTex = createBuffer(gl, new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]));
     buffers.basicQuadIndices = createBuffer(gl, new Uint16Array([0, 1, 2, 0, 2, 3]), ELEMENT_ARRAY_BUFFER);
@@ -129,16 +129,18 @@ original commented source there. */
   p = {
     globe: load('globe', gl),
     noiseTransport: load('noiseTransport', gl),
-    orthogonalLic: load('orthogonalLic', gl)
+    orthogonalLic: load('orthogonalLic', gl),
+    advection: load('advection', gl),
+    blend: load('blend', gl)
   };
   out$.draw = draw = function(){
-    var x1$, x2$, x3$, x4$, x5$, x6$, x7$, rot, modelView, x8$;
+    var x1$, x2$, x3$, x4$, x5$, x6$, x7$, x8$, x9$, x10$, x11$, x12$, x13$, rot, modelView, x14$;
     gl.useProgram(p.noiseTransport);
     x1$ = gl;
     x1$.viewport(0, 0, 2048, 1024);
     x1$.disable(DEPTH_TEST);
     x1$.disable(CULL_FACE);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, noiseTransportFramebuffer);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, noiseTransport.framebuffer);
     gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -157,25 +159,63 @@ original commented source there. */
     x4$.viewport(0, 0, 2048, 1024);
     x4$.disable(DEPTH_TEST);
     x4$.disable(CULL_FACE);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, orthogonalLicFramebuffer);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, orthogonalLic.framebuffer);
     gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, texture);
     x5$ = gl.getUniformLocation(p.orthogonalLic, 'oceanCurrent');
     gl.uniform1i(x5$, 0);
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, noiseTransportTexture);
+    gl.bindTexture(gl.TEXTURE_2D, noiseTransport.texture);
     x6$ = gl.getUniformLocation(p.orthogonalLic, 'transportedNoise');
     gl.uniform1i(x6$, 1);
     bindBuffer(gl, p.orthogonalLic, 'vertexCoord', buffers.basicQuad, 2);
     bindBuffer(gl, p.orthogonalLic, 'texCoord', buffers.basicQuadTex, 2);
     gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.basicQuadIndices);
     gl.drawElements(TRIANGLES, 6, UNSIGNED_SHORT, 0);
-    gl.useProgram(p.globe);
+    gl.useProgram(p.advection);
     x7$ = gl;
-    x7$.viewport(0, 0, width, height);
-    x7$.enable(DEPTH_TEST);
-    x7$.enable(CULL_FACE);
+    x7$.viewport(0, 0, 2048, 1024);
+    x7$.disable(DEPTH_TEST);
+    x7$.disable(CULL_FACE);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, advection.framebuffer);
+    gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    x8$ = gl.getUniformLocation(p.advection, 'oceanCurrent');
+    gl.uniform1i(x8$, 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, blend.texture);
+    x9$ = gl.getUniformLocation(p.advection, 'previousTexture');
+    gl.uniform1i(x9$, 1);
+    bindBuffer(gl, p.advection, 'vertexCoord', buffers.basicQuad, 2);
+    bindBuffer(gl, p.advection, 'texCoord', buffers.basicQuadTex, 2);
+    gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.basicQuadIndices);
+    gl.drawElements(TRIANGLES, 6, UNSIGNED_SHORT, 0);
+    gl.useProgram(p.blend);
+    x10$ = gl;
+    x10$.viewport(0, 0, 2048, 1024);
+    x10$.disable(DEPTH_TEST);
+    x10$.disable(CULL_FACE);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, blend.framebuffer);
+    gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, orthogonalLic.texture);
+    x11$ = gl.getUniformLocation(p.blend, 'orthogonalLIC');
+    gl.uniform1i(x11$, 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, advection.texture);
+    x12$ = gl.getUniformLocation(p.blend, 'advected');
+    gl.uniform1i(x12$, 1);
+    bindBuffer(gl, p.orthogonalLic, 'vertexCoord', buffers.basicQuad, 2);
+    bindBuffer(gl, p.orthogonalLic, 'texCoord', buffers.basicQuadTex, 2);
+    gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.basicQuadIndices);
+    gl.drawElements(TRIANGLES, 6, UNSIGNED_SHORT, 0);
+    gl.useProgram(p.globe);
+    x13$ = gl;
+    x13$.viewport(0, 0, width, height);
+    x13$.enable(DEPTH_TEST);
+    x13$.enable(CULL_FACE);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
     if (currentRot == null) {
@@ -189,9 +229,9 @@ original commented source there. */
     mat4.multiply(modelView, rot);
     uniform(gl, p.globe, 'ModelViewMatrix', 'Matrix4fv', modelView);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, orthogonalLicTexture);
-    x8$ = gl.getUniformLocation(p.globe, 'texture');
-    gl.uniform1i(x8$, 0);
+    gl.bindTexture(gl.TEXTURE_2D, blend.texture);
+    x14$ = gl.getUniformLocation(p.globe, 'texture');
+    gl.uniform1i(x14$, 0);
     bindBuffer(gl, p.globe, 'modelCoord', buffers.modelCoord, 3);
     bindBuffer(gl, p.globe, 'texCoord', buffers.texCoord, 2);
     gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.idx);
