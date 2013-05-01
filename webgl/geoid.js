@@ -43,8 +43,8 @@ original commented source there. */
     x1$ = ctx.createImageData(width, height);
     x2$ = x1$.data;
     for (i = 0, to$ = width * height * 4; i < to$; i += 4) {
-      x2$[i] = x2$[i + 1] = x2$[i + 2] = Math.random() >= 0.5 ? 255 : 0;
-      x2$[i + 3] = 255;
+      x2$[i] = x2$[i + 1] = Math.random() >= 0.5 ? 255 : 0;
+      x2$[i + 2] = x2$[i + 3] = 255;
     }
     return x1$;
   }
@@ -87,8 +87,8 @@ original commented source there. */
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.bindTexture(gl.TEXTURE_2D, noiseTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, noise);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.generateMipmap(gl.TEXTURE_2D);
     setupFramebuffer(noiseTransport);
     setupFramebuffer(orthogonalLic);
@@ -132,7 +132,7 @@ original commented source there. */
     blend: load('blend', gl)
   };
   out$.draw = draw = function(){
-    var x1$, x2$, x3$, x4$, x5$, x6$, x7$, x8$, x9$, x10$, x11$, x12$, x13$, x14$, rot, modelView, x15$;
+    var x1$, x2$, x3$, x4$, x5$, x6$, x7$, x8$, x9$, x10$, x11$, x12$, x13$, x14$, rot, modelView, x15$, x16$;
     gl.useProgram(p.noiseTransport);
     x1$ = gl;
     x1$.viewport(0, 0, 2048, 1024);
@@ -235,6 +235,10 @@ original commented source there. */
     gl.bindTexture(gl.TEXTURE_2D, blend.texture);
     x15$ = gl.getUniformLocation(p.globe, 'texture');
     gl.uniform1i(x15$, 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    x16$ = gl.getUniformLocation(p.globe, 'oceanCurrent');
+    gl.uniform1i(x16$, 1);
     bindBuffer(gl, p.globe, 'modelCoord', buffers.modelCoord, 3);
     bindBuffer(gl, p.globe, 'texCoord', buffers.texCoord, 2);
     gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.idx);

@@ -52,8 +52,36 @@ programs <<<
 
       varying vec2 tex; // coords
 
+      uniform sampler2D oceanCurrent;
+
+      bool isWater(vec2 coords) {
+        vec3 val = texture2D(oceanCurrent, coords).xyz;
+        return val.z != 0.0;
+      }
+
+      // transform packed texture field
+      vec2 fieldAt(vec2 coords) {
+        vec3 val = texture2D(oceanCurrent, coords).xyz;
+        return vec2(val.x - 0.5, val.y - 0.5);
+      }
+
       void main() {
-        gl_FragColor = texture2D(texture, tex);
+        if (isWater(tex)) {
+          vec4 pixel = texture2D(texture, tex);
+
+          float magnitude = length(fieldAt(tex));
+
+          // not in paper, but in 2002 e/l texture advection:
+          // masking by magnitude
+          float m = 10.;
+          float n = 3.;
+          float ratio = min(magnitude / 0.5, 1.);
+          vec4 alpha = (1. - pow(1. - ratio, m)) * (1. - pow(1. - pixel, vec4(n)));
+
+          gl_FragColor = pixel * alpha;
+        } else {
+          gl_FragColor = vec4(0, 0.5, 0, 1.0);
+        }
       }"""
   noise-transport: shader-program do
     vertex: plain-quad-vertex
@@ -119,28 +147,28 @@ programs <<<
 
       void main() {
         if (isWater(tex)) {
-          float h = 1.0;
+          float h = 0.75;
 
           // LIC backwards and forwards
           vec3 pixel = vec3(0.0, 0.0, 0.0);
           vec2 pos = tex;
 
           vec2 field = orthogonalFieldAt(pos);
-          for(int i = 0; i < 15; ++i) {
+          for(int i = 0; i < 25; ++i) {
             pixel = pixel + texture2D(transportedNoise, pos).rgb;
             pos = pos - field * h / size;
             field = orthogonalFieldAt(pos);
           }
           pos = tex;
           field = orthogonalFieldAt(pos);
-          for(int i = 0; i < 15; ++i) {
+          for(int i = 0; i < 25; ++i) {
             pixel = pixel + texture2D(transportedNoise, pos).rgb;
             pos = pos + field * h / size;
             field = orthogonalFieldAt(pos);
           }
 
           // average
-          pixel = pixel / 30.0;
+          pixel = pixel / 50.0;
 
           gl_FragColor = vec4(pixel, 1.0);
         } else {
@@ -174,12 +202,17 @@ programs <<<
       void main() {
         if (isWater(tex)) {
           vec2 currentPosition = tex;
-          vec2 field = fieldAt(tex);
 
-          float h = 1.0;
-          vec2 advectedPosition = currentPosition + field * h / size;
+          float h = 0.125;
 
-          gl_FragColor = vec4(texture2D(previousTexture, advectedPosition));
+          vec2 pos = tex;
+          vec2 field = fieldAt(pos);
+          for(int i = 0; i < 35; ++i) {
+            pos = pos - field * h / size;
+            field = fieldAt(pos);
+          }
+
+          gl_FragColor = vec4(texture2D(previousTexture, pos));
         } else {
           gl_FragColor = vec4(0, 0., 0., 1.0);
         }
@@ -200,16 +233,19 @@ programs <<<
         return val.z != 0.0;
       }
 
+      // transform packed texture field
+      vec2 fieldAt(vec2 coords) {
+        vec3 val = texture2D(oceanCurrent, coords).xyz;
+        return vec2(val.x - 0.5, val.y - 0.5);
+      }
+
       varying vec2 tex;
 
       void main() {
-        if (isWater(tex)) {
-          gl_FragColor = texture2D(orthogonalLIC, tex) * 0.05
-                       + texture2D(advected     , tex) * 0.95;
+        vec4 pixel   = texture2D(orthogonalLIC, tex) * 0.05
+                     + texture2D(advected     , tex) * 0.95;
 
-        } else {
-          gl_FragColor = vec4(0, 0.5, 0., 1.0);
-        }
+        gl_FragColor = pixel;
       }
     """
 
