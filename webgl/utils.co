@@ -63,12 +63,12 @@ export shader-program = ({vertex, fragment, uniforms ? {}}) -> (gl) ->
     unless gl.getProgramParameter (&), LINK_STATUS
       throw new Error "couldn't intialize shader program!"
 
-  gl.program = program # handy shortcut
-  gl.useProgram program
   for name, [type, ...value] in uniforms
     gl"uniform#type".apply do
       gl
       [gl.getUniformLocation program, name].concat value
+
+  return program
 
 export defer = (t, fn) -> setTimeout fn, t
 
@@ -84,27 +84,28 @@ export reading = (id, reader-fn, fn) ->
     &addEventListener \change onchange
     onchange.call (&) # handle initial state
 
-# sets uniform without verbosity; expects gl.program to be program
-export uniform = (gl, name, type, value) ->
+# sets uniform without verbosity; 
+export uniform = (gl, program, name, type, value) ->
   gl"uniform#type" do
-    gl.getUniformLocation gl.program, name
+    gl.getUniformLocation program, name
     false
     value
 
-# binds attribute buffer without verbosity; expects gl.program to be program
+# binds attribute buffer without verbosity
 # returns buffer
-export bind-buffer = (gl, name, value, element-length, type = ARRAY_BUFFER) ->
+export bind-buffer = !(gl, program, name, buffer, element-length) ->
+  buffer
+    gl.bindBuffer gl.ARRAY_BUFFER, &
+    # bind to varying coordiantes
+    gl.getAttribLocation program, name
+      gl.enableVertexAttribArray (&)
+      gl.vertexAttribPointer (&), element-length, gl.FLOAT, false 0 0
+
+export create-buffer = (gl, value, type = ARRAY_BUFFER) ->
   buf = gl.createBuffer!
     gl.bindBuffer type, (&)
     gl.bufferData do
       type
       value
       STATIC_DRAW
-
-    # bind to varying coordiantes
-    gl.getAttribLocation gl.program, name
-      gl.enableVertexAttribArray (&)
-      gl.vertexAttribPointer (&), element-length, gl.FLOAT, false 0 0
-
-  return buf
 

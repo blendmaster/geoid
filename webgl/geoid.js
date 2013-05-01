@@ -2,7 +2,7 @@
 original commented source there. */
 (function(){
   "use strict";
-  var canvas, ref$, width, height, k, ref1$, v, x0$, rotation, currentRot, fov, distance, ctx, buffers, latBands, lonBands, noiseTex, setupBuffers, numTriangles, draw, texture, x1$, pointUnder, x2$, out$ = typeof exports != 'undefined' && exports || this;
+  var canvas, ref$, width, height, k, ref1$, v, x0$, rotation, currentRot, fov, distance, ctx, buffers, latBands, lonBands, noiseTex, noiseTransportFramebuffer, noiseTransportTexture, noiseTransportRenderbuffer, setupBuffers, numTriangles, p, draw, texture, x1$, pointUnder, x2$, out$ = typeof exports != 'undefined' && exports || this;
   canvas = document.getElementById('canvas');
   ref$ = document.documentElement, canvas.width = ref$.clientWidth, canvas.height = ref$.clientHeight;
   width = canvas.width, height = canvas.height;
@@ -22,8 +22,6 @@ original commented source there. */
   }
   x0$ = gl;
   x0$.viewport(0, 0, width, height);
-  x0$.enable(DEPTH_TEST);
-  x0$.enable(CULL_FACE);
   x0$.clearColor(0, 0, 0, 1);
   x0$.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
   function resetStage(){
@@ -53,18 +51,35 @@ original commented source there. */
     return x1$;
   }
   out$.buffers = buffers = {};
-  load('globe', gl);
   latBands = 30;
   lonBands = 30;
   noiseTex = gl.createTexture();
+  noiseTransportFramebuffer = gl.createFramebuffer();
+  noiseTransportTexture = gl.createTexture();
+  noiseTransportRenderbuffer = gl.createRenderbuffer();
   setupBuffers = function(){
-    var noise, modelCoords, texCoords, lat, to$, theta, sT, cT, lon, to1$, phi, sP, cP, idx, to2$, to3$, fst, snd, x1$;
+    var noise, tw, th, x1$, modelCoords, texCoords, lat, to$, theta, sT, cT, lon, to1$, phi, sP, cP, idx, to2$, to3$, fst, snd, x2$;
     noise = genNoise(1024, 512);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.bindTexture(gl.TEXTURE_2D, noiseTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, noise);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.bindTexture(gl.TEXTURE_2D, noiseTransportTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    tw = 1024;
+    th = 512;
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, tw, th, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, noiseTransportFramebuffer);
+    x1$ = noiseTransportRenderbuffer;
+    gl.bindRenderbuffer(gl.RENDERBUFFER, x1$);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, tw, th);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, noiseTransportTexture, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, noiseTransportRenderbuffer);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     modelCoords = [];
     texCoords = [];
     for (lat = 0, to$ = latBands; lat <= to$; ++lat) {
@@ -87,32 +102,62 @@ original commented source there. */
         idx.push(fst, fst + 1, snd, snd, fst + 1, snd + 1);
       }
     }
-    buffers.modelCoord = bindBuffer(gl, 'modelCoord', new Float32Array(modelCoords), 3);
-    buffers.texCoord = bindBuffer(gl, 'texCoord', new Float32Array(texCoords), 2);
-    buffers.idx = (x1$ = gl.createBuffer(), gl.bindBuffer(ELEMENT_ARRAY_BUFFER, x1$), gl.bufferData(ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), STATIC_DRAW), x1$);
+    buffers.modelCoord = createBuffer(gl, new Float32Array(modelCoords));
+    buffers.texCoord = createBuffer(gl, new Float32Array(texCoords));
+    buffers.idx = (x2$ = gl.createBuffer(), gl.bindBuffer(ELEMENT_ARRAY_BUFFER, x2$), gl.bufferData(ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), STATIC_DRAW), x2$);
+    buffers.basicQuad = createBuffer(gl, new Float32Array([-1, -1, 1, -1, 1, 1, -1, 1]));
+    buffers.basicQuadTex = createBuffer(gl, new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]));
+    buffers.basicQuadIndices = createBuffer(gl, new Uint16Array([0, 1, 2, 0, 2, 3]), ELEMENT_ARRAY_BUFFER);
   };
   numTriangles = latBands * lonBands * 6;
+  p = {
+    globe: load('globe', gl),
+    noiseTransport: load('noiseTransport', gl)
+  };
   out$.draw = draw = function(){
-    var rot, modelView, x1$, x2$;
+    var x1$, x2$, x3$, x4$, rot, modelView, x5$;
+    gl.useProgram(p.noiseTransport);
+    x1$ = gl;
+    x1$.viewport(0, 0, 1024, 512);
+    x1$.disable(DEPTH_TEST);
+    x1$.disable(CULL_FACE);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, noiseTransportFramebuffer);
+    gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    x2$ = gl.getUniformLocation(p.noiseTransport, 'texture');
+    gl.uniform1i(x2$, 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, noiseTex);
+    x3$ = gl.getUniformLocation(p.noiseTransport, 'noise');
+    gl.uniform1i(x3$, 1);
+    bindBuffer(gl, p.noiseTransport, 'vertexCoord', buffers.basicQuad, 2);
+    bindBuffer(gl, p.noiseTransport, 'texCoord', buffers.basicQuadTex, 2);
+    gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.basicQuadIndices);
+    gl.drawElements(TRIANGLES, 6, UNSIGNED_SHORT, 0);
+    gl.useProgram(p.globe);
+    x4$ = gl;
+    x4$.viewport(0, 0, width, height);
+    x4$.enable(DEPTH_TEST);
+    x4$.enable(CULL_FACE);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
     if (currentRot == null) {
       currentRot = mat4.identity();
     }
     rot = mat4.multiply(currentRot, rotation, mat4.create());
-    uniform(gl, 'NormalMatrix', 'Matrix3fv', mat4.toMat3(rot));
-    uniform(gl, 'ProjectionMatrix', 'Matrix4fv', mat4.perspective(fov, width / height, 0.1, 100.0));
+    uniform(gl, p.globe, 'NormalMatrix', 'Matrix3fv', mat4.toMat3(rot));
+    uniform(gl, p.globe, 'ProjectionMatrix', 'Matrix4fv', mat4.perspective(fov, width / height, 0.1, 100.0));
     modelView = mat4.identity();
     mat4.translate(modelView, [0, 0, -(distance + 1)]);
     mat4.multiply(modelView, rot);
-    uniform(gl, 'ModelViewMatrix', 'Matrix4fv', modelView);
+    uniform(gl, p.globe, 'ModelViewMatrix', 'Matrix4fv', modelView);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    x1$ = gl.getUniformLocation(gl.program, 'texture');
-    gl.uniform1i(x1$, 0);
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, noiseTex);
-    x2$ = gl.getUniformLocation(gl.program, 'noise');
-    gl.uniform1i(x2$, 1);
+    gl.bindTexture(gl.TEXTURE_2D, noiseTransportTexture);
+    x5$ = gl.getUniformLocation(p.globe, 'texture');
+    gl.uniform1i(x5$, 0);
+    bindBuffer(gl, p.globe, 'modelCoord', buffers.modelCoord, 3);
+    bindBuffer(gl, p.globe, 'texCoord', buffers.texCoord, 2);
     gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.idx);
     gl.drawElements(TRIANGLES, numTriangles, UNSIGNED_SHORT, 0);
   };

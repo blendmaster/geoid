@@ -2,7 +2,7 @@
 original commented source there. */
 (function(){
   "use strict";
-  var log, degrees, radians, $, readPpm, shaderProgram, defer, reading, uniform, bindBuffer, out$ = typeof exports != 'undefined' && exports || this, slice$ = [].slice;
+  var log, degrees, radians, $, readPpm, shaderProgram, defer, reading, uniform, bindBuffer, createBuffer, out$ = typeof exports != 'undefined' && exports || this, slice$ = [].slice;
   mat4.translation = function(translation){
     return mat4.translate(mat4.identity(), translation);
   };
@@ -47,7 +47,7 @@ original commented source there. */
       ? ref$
       : {};
     return function(gl){
-      var x0$, vertexShader, x1$, fragmentShader, x2$, program, name, ref$, ref1$, type, value, results$ = [];
+      var x0$, vertexShader, x1$, fragmentShader, x2$, program, name, ref$, ref1$, type, value;
       x0$ = vertexShader = gl.createShader(gl.VERTEX_SHADER);
       gl.shaderSource(x0$, vertex);
       gl.compileShader(x0$);
@@ -67,13 +67,11 @@ original commented source there. */
       if (!gl.getProgramParameter(x2$, LINK_STATUS)) {
         throw new Error("couldn't intialize shader program!");
       }
-      gl.program = program;
-      gl.useProgram(program);
       for (name in ref$ = uniforms) {
         ref1$ = ref$[name], type = ref1$[0], value = slice$.call(ref1$, 1);
-        results$.push(gl["uniform" + type].apply(gl, [gl.getUniformLocation(program, name)].concat(value)));
+        gl["uniform" + type].apply(gl, [gl.getUniformLocation(program, name)].concat(value));
       }
-      return results$;
+      return program;
     };
   };
   out$.defer = defer = function(t, fn){
@@ -96,18 +94,23 @@ original commented source there. */
     onchange.call(x0$);
     return x0$;
   };
-  out$.uniform = uniform = function(gl, name, type, value){
-    return gl["uniform" + type](gl.getUniformLocation(gl.program, name), false, value);
+  out$.uniform = uniform = function(gl, program, name, type, value){
+    return gl["uniform" + type](gl.getUniformLocation(program, name), false, value);
   };
-  out$.bindBuffer = bindBuffer = function(gl, name, value, elementLength, type){
-    var x0$, buf, x1$;
+  out$.bindBuffer = bindBuffer = function(gl, program, name, buffer, elementLength){
+    var x0$, x1$;
+    x0$ = buffer;
+    gl.bindBuffer(gl.ARRAY_BUFFER, x0$);
+    x1$ = gl.getAttribLocation(program, name);
+    gl.enableVertexAttribArray(x1$);
+    gl.vertexAttribPointer(x1$, elementLength, gl.FLOAT, false, 0, 0);
+  };
+  out$.createBuffer = createBuffer = function(gl, value, type){
+    var x0$, buf;
     type == null && (type = ARRAY_BUFFER);
     x0$ = buf = gl.createBuffer();
     gl.bindBuffer(type, x0$);
     gl.bufferData(type, value, STATIC_DRAW);
-    x1$ = gl.getAttribLocation(gl.program, name);
-    gl.enableVertexAttribArray(x1$);
-    gl.vertexAttribPointer(x1$, elementLength, gl.FLOAT, false, 0, 0);
-    return buf;
+    return x0$;
   };
 }).call(this);

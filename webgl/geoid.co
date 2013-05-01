@@ -32,8 +32,6 @@ for k, v in gl => window[k] = v if /^[A-Z_]+$/.test k
 
 gl
   &viewport   0 0 width, height
-  &enable     DEPTH_TEST
-  &enable     CULL_FACE
   &clearColor 0 0 0 1 # black
   &clear      COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT
 
@@ -61,13 +59,15 @@ function gen-noise width, height
 
 export buffers = {}
 
-load \globe gl
-
 const
   latBands = 30
   lonBands = 30
 
 noise-tex = gl.createTexture!
+noise-transport-framebuffer = gl.createFramebuffer!
+noise-transport-texture = gl.createTexture!
+# not sure if needed
+noise-transport-renderbuffer = gl.createRenderbuffer!
 setup-buffers = !->
   noise = gen-noise 1024 512
 
@@ -76,8 +76,27 @@ setup-buffers = !->
   gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, noise
   gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST
   gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST
-  #gl.generateMipmap gl.TEXTURE_2D
-  
+  gl.generateMipmap gl.TEXTURE_2D
+
+  gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
+  gl.bindTexture gl.TEXTURE_2D, noise-transport-texture
+  gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST
+  gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST
+  tw = 1024; th = 512
+  gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, tw, th, 0, gl.RGBA, gl.UNSIGNED_BYTE, null
+
+  gl.bindFramebuffer gl.FRAMEBUFFER, noise-transport-framebuffer
+  noise-transport-renderbuffer
+    gl.bindRenderbuffer gl.RENDERBUFFER, &
+    gl.renderbufferStorage gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, tw, th
+
+  gl.framebufferTexture2D gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D,
+    noise-transport-texture, 0
+  gl.framebufferRenderbuffer gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER,
+    noise-transport-renderbuffer
+
+  gl.bindFramebuffer gl.FRAMEBUFFER, null
+
   modelCoords = []
 
   texCoords = []
@@ -107,8 +126,8 @@ setup-buffers = !->
         snd + 1
 
   buffers <<<
-    modelCoord : bind-buffer gl, \modelCoord new Float32Array(modelCoords), 3
-    texCoord   : bind-buffer gl, \texCoord new Float32Array(texCoords), 2
+    modelCoord : create-buffer gl, new Float32Array(modelCoords)
+    texCoord   : create-buffer gl, new Float32Array(texCoords)
 
     idx        : with gl.createBuffer!
       gl.bindBuffer ELEMENT_ARRAY_BUFFER, &
@@ -116,35 +135,79 @@ setup-buffers = !->
         ELEMENT_ARRAY_BUFFER
         new Uint16Array(idx)
         STATIC_DRAW
+    basic-quad: create-buffer gl, new Float32Array [] =
+      -1 -1
+       1 -1
+       1  1
+      -1  1
+    basic-quad-tex: create-buffer gl, new Float32Array [] =
+       0  0
+       1  0
+       1  1
+       0  1
+    basic-quad-indices: create-buffer gl, new Uint16Array([0 1 2 0 2 3]),
+      ELEMENT_ARRAY_BUFFER
 
 num-triangles = latBands * lonBands * 6
 
+p =
+  globe: load \globe gl
+  noise-transport: load \noiseTransport gl
+
 export draw = !->
+  gl.useProgram p.noise-transport
+  gl
+    &viewport 0 0 1024 512
+    &disable     DEPTH_TEST
+    &disable     CULL_FACE
+  gl.bindFramebuffer gl.FRAMEBUFFER, noise-transport-framebuffer
+  gl.clear COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT
+
+  gl.activeTexture gl.TEXTURE0
+  gl.bindTexture gl.TEXTURE_2D, texture
+  gl.getUniformLocation p.noise-transport, \texture
+    gl.uniform1i &, 0
+
+  gl.activeTexture gl.TEXTURE1
+  gl.bindTexture gl.TEXTURE_2D, noise-tex
+  gl.getUniformLocation p.noise-transport, \noise
+    gl.uniform1i &, 1
+
+  bind-buffer gl, p.noise-transport, \vertexCoord, buffers.basic-quad, 2
+  bind-buffer gl, p.noise-transport, \texCoord, buffers.basic-quad-tex, 2
+
+  gl.bindBuffer ELEMENT_ARRAY_BUFFER, buffers.basic-quad-indices
+  gl.drawElements TRIANGLES, 6, UNSIGNED_SHORT, 0
+
+  gl.useProgram p.globe
+  gl
+    &viewport 0 0 width, height
+    &enable     DEPTH_TEST
+    &enable     CULL_FACE
+  gl.bindFramebuffer gl.FRAMEBUFFER, null
   gl.clear COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT
 
   if current-rot!? then current-rot := mat4.identity! # XXX weird bug
   rot = mat4.multiply current-rot, rotation, mat4.create!
 
-  uniform gl, \NormalMatrix \Matrix3fv mat4.toMat3 rot
+  uniform gl, p.globe, \NormalMatrix \Matrix3fv mat4.toMat3 rot
 
-  uniform gl, \ProjectionMatrix \Matrix4fv \
+  uniform gl, p.globe, \ProjectionMatrix \Matrix4fv \
     mat4.perspective fov, width / height, 0.1 100.0 # distance - 1, distance + 3
 
   model-view = mat4.identity!
   mat4.translate model-view, [0,0, -(distance + 1)]
   mat4.multiply  model-view, rot
 
-  uniform gl, \ModelViewMatrix \Matrix4fv model-view
+  uniform gl, p.globe, \ModelViewMatrix \Matrix4fv model-view
 
   gl.activeTexture gl.TEXTURE0
-  gl.bindTexture gl.TEXTURE_2D, texture
-  gl.getUniformLocation gl.program, \texture
+  gl.bindTexture gl.TEXTURE_2D, noise-transport-texture
+  gl.getUniformLocation p.globe, \texture
     gl.uniform1i &, 0
 
-  gl.activeTexture gl.TEXTURE1
-  gl.bindTexture gl.TEXTURE_2D, noise-tex
-  gl.getUniformLocation gl.program, \noise
-    gl.uniform1i &, 1
+  bind-buffer gl, p.globe, \modelCoord, buffers.modelCoord, 3
+  bind-buffer gl, p.globe, \texCoord, buffers.texCoord, 2
 
   gl.bindBuffer ELEMENT_ARRAY_BUFFER, buffers.idx
   gl.drawElements TRIANGLES, num-triangles, UNSIGNED_SHORT, 0
