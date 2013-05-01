@@ -10,6 +10,9 @@ original commented source there. */
 "use strict"
 
 canvas = document.getElementById \canvas
+
+canvas{clientWidth: width, clientHeight: height} = document.documentElement
+
 {width, height} = canvas
 
 try

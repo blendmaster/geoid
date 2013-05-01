@@ -5,15 +5,17 @@
 
 <style>
   input:not(:disabled), button, label { cursor: pointer }
-  #canvas { cursor: pointer }
+  #canvas { 
+    cursor: pointer;
+    position: absolute;
+    top: 0;
+    z-index: -1;
+  }
   #texture { list-style-type: none; padding-left: 0 }
+  body { background: black; color: #ccc; }
 </style>
 
 <h1>Geoid</h1>
-
-<p>This is a WebGL version of the ocean current visualization part of geoid, made
-   so I can developer with a tighter feedback loop than the android NDK.
-
 <form id=controls action=#>
   <div>
     <button id=zoom-in  type=button>Zoom in</button>
@@ -22,7 +24,7 @@
 </form>
 
 <div>
-  <canvas id=canvas width=500 height=500>
+  <canvas id=canvas width=1024 height=1024>
     Oh gosh, your browser doesn't support canvas ;_;
   </canvas>
 </div>
