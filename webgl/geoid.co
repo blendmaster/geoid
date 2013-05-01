@@ -50,7 +50,15 @@ reset-stage!
 $ \zoom-in  .addEventListener \click !-> --fov; draw!
 $ \zoom-out .addEventListener \click !-> ++fov; draw!
 
-#texture = stuff # TODO load image
+ctx = document.createElement \canvas .getContext \2d
+
+function gen-noise width, height
+  ctx.createImageData width, height
+    &data
+      for i til width * height * 4 by 4
+        &[i] = &[i + 1] = &[i + 2] = if Math.random! >= 0.5 then 255 else 0
+        &[i + 3] = 255
+
 export buffers = {}
 
 load \globe gl
@@ -59,12 +67,19 @@ const
   latBands = 30
   lonBands = 30
 
+noise-tex = gl.createTexture!
 setup-buffers = !->
-  #gl.activeTexture gl.TEXTURE0
-  #gl.bindTexture gl.TEXTURE_2D, textures # TODO
-  #uniform gl, \texture \1i 0
+  noise = gen-noise 1024 512
 
+  gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
+  gl.bindTexture gl.TEXTURE_2D, noise-tex
+  gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, noise
+  gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST
+  gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST
+  #gl.generateMipmap gl.TEXTURE_2D
+  
   modelCoords = []
+
   texCoords = []
   for lat to latBands
     theta = lat * Math.PI / latBands
@@ -91,8 +106,6 @@ setup-buffers = !->
         fst + 1
         snd + 1
 
-  console.log 'idx size' idx.length, 'model size' modelCoords.length, 'tex size' texCoords.length
-  export modelCoords, texCoords, idx
   buffers <<<
     modelCoord : bind-buffer gl, \modelCoord new Float32Array(modelCoords), 3
     texCoord   : bind-buffer gl, \texCoord new Float32Array(texCoords), 2
@@ -117,11 +130,8 @@ export draw = !->
   uniform gl, \ProjectionMatrix \Matrix4fv \
     mat4.perspective fov, width / height, 0.1 100.0 # distance - 1, distance + 3
 
-  console.log mat4.perspective fov, width / height, 0.1 100.0 # distance - 1, distance + 3
-
   model-view = mat4.identity!
   mat4.translate model-view, [0,0, -(distance + 1)]
-  console.log model-view
   mat4.multiply  model-view, rot
 
   uniform gl, \ModelViewMatrix \Matrix4fv model-view
@@ -130,6 +140,11 @@ export draw = !->
   gl.bindTexture gl.TEXTURE_2D, texture
   gl.getUniformLocation gl.program, \texture
     gl.uniform1i &, 0
+
+  gl.activeTexture gl.TEXTURE1
+  gl.bindTexture gl.TEXTURE_2D, noise-tex
+  gl.getUniformLocation gl.program, \noise
+    gl.uniform1i &, 1
 
   gl.bindBuffer ELEMENT_ARRAY_BUFFER, buffers.idx
   gl.drawElements TRIANGLES, num-triangles, UNSIGNED_SHORT, 0
