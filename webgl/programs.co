@@ -131,9 +131,9 @@ programs <<<
           float h = 10.0;
           vec2 advectedPosition = currentPosition + field * h / size;
 
-          gl_FragColor = vec4(texture2D(noise, advectedPosition));
+          gl_FragColor = texture2D(noise, advectedPosition);
         } else {
-          gl_FragColor = vec4(0, 0., 0., 1.0);
+          gl_FragColor = texture2D(noise, tex);
         }
       }
     """
@@ -187,7 +187,7 @@ programs <<<
 
           gl_FragColor = vec4(pixel, 1.0);
         } else {
-          gl_FragColor = vec4(0, 0., 0., 1.0);
+          gl_FragColor = texture2D(transportedNoise, tex);
         }
       }
     """
@@ -229,7 +229,7 @@ programs <<<
 
           gl_FragColor = vec4(texture2D(previousTexture, pos));
         } else {
-          gl_FragColor = vec4(0, 0., 0., 1.0);
+          gl_FragColor = texture2D(previousTexture, tex);
         }
       }
     """

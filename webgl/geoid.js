@@ -50,13 +50,19 @@ original commented source there. */
     currentRot = mat4.identity();
     fov = 15;
     distance = 1 / Math.tan(radians(fov) / 2);
+    $('m').value = 10;
+    $('n').value = 3;
   }
   window.addEventListener('unload', function(){
     set('rotation', arr(rotation));
     set('current-rot', arr(currentRot));
     set('distance', distance);
     set('fov', fov);
+    set('m', parseFloat($('m').value) || 10);
+    set('n', parseFloat($('n').value) || 10);
   });
+  $('m').value = get('m');
+  $('n').value = get('n');
   $('reset').addEventListener('click', resetStage);
   $('zoom-in').addEventListener('click', function(){
     fov = clamp(fov - 1, 1, 100);
