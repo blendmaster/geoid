@@ -14,6 +14,11 @@ original commented source there. */
 mat4.translation = (translation) ->
   mat4.translate mat4.identity!, translation
 
+export get = -> try JSON.parse localStorage.getItem it
+export set = (key, it) -> localStorage.setItem key, JSON.stringify it
+
+export clamp = (it, min, max)-> Math.min max, Math.max min, it
+
 export log = -> console.log it; it
 
 export degrees = -> it * 180 / Math.PI
@@ -84,7 +89,7 @@ export reading = (id, reader-fn, fn) ->
     &addEventListener \change onchange
     onchange.call (&) # handle initial state
 
-# sets uniform without verbosity; 
+# sets uniform without verbosity;
 export uniform = (gl, program, name, type, value) ->
   gl"uniform#type" do
     gl.getUniformLocation program, name

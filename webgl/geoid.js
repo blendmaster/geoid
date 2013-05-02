@@ -2,7 +2,7 @@
 original commented source there. */
 (function(){
   "use strict";
-  var canvas, ref$, width, height, k, ref1$, v, x0$, rotation, currentRot, fov, distance, ctx, buffers, latBands, lonBands, noiseTex, noiseTransport, orthogonalLic, advection, blend, setupBuffers, numTriangles, p, draw, texture, x1$, pointUnder, x2$, out$ = typeof exports != 'undefined' && exports || this;
+  var canvas, ref$, width, height, k, ref1$, v, x0$, arr, rotation, e, currentRot, fov, distance, ctx, buffers, latBands, lonBands, noiseTex, noiseTransport, orthogonalLic, advection, blend, setupBuffers, numTriangles, p, frame, draw, texture, x1$, x2$, pointUnder, x3$, out$ = typeof exports != 'undefined' && exports || this;
   canvas = document.getElementById('canvas');
   ref$ = document.documentElement, canvas.width = ref$.clientWidth, canvas.height = ref$.clientHeight;
   width = canvas.width, height = canvas.height;
@@ -24,21 +24,48 @@ original commented source there. */
   x0$.viewport(0, 0, width, height);
   x0$.clearColor(0, 0, 0, 1);
   x0$.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+  arr = function(it){
+    return Array.prototype.slice.call(it);
+  };
+  rotation = (function(){
+    try {
+      return new Float32Array(get('rotation'));
+    } catch (e$) {
+      e = e$;
+      return mat4.identity();
+    }
+  }());
+  currentRot = (function(){
+    try {
+      return new Float32Array(get('current-rot'));
+    } catch (e$) {
+      e = e$;
+      return mat4.identity();
+    }
+  }());
+  fov = parseInt(get('fov') || 15, 10);
+  distance = get('distance') || 1 / Math.tan(radians(fov) / 2);
   function resetStage(){
     rotation = mat4.identity();
     currentRot = mat4.identity();
     fov = 15;
     distance = 1 / Math.tan(radians(fov) / 2);
   }
-  resetStage();
+  window.addEventListener('unload', function(){
+    set('rotation', arr(rotation));
+    set('current-rot', arr(currentRot));
+    set('distance', distance);
+    set('fov', fov);
+  });
+  $('reset').addEventListener('click', resetStage);
   $('zoom-in').addEventListener('click', function(){
-    --fov;
+    fov = clamp(fov - 1, 1, 100);
   });
   $('zoom-out').addEventListener('click', function(){
-    ++fov;
+    fov = clamp(fov + 1, 1, 100);
   });
   addWheelListener(document.body, function(it){
-    fov += it.deltaY / Math.abs(it.deltaY);
+    fov = clamp(fov + it.deltaY / Math.abs(it.deltaY), 1, 100);
   });
   ctx = document.createElement('canvas').getContext('2d');
   function genNoise(width, height){
@@ -246,9 +273,11 @@ original commented source there. */
     bindBuffer(gl, p.globe, 'texCoord', buffers.texCoord, 2);
     gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.idx);
     gl.drawElements(TRIANGLES, numTriangles, UNSIGNED_SHORT, 0);
-    requestAnimationFrame(draw);
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(draw);
   };
   window.requestAnimationFrame = window.mozRequestAnimationFrame || window.webkitRequestAnimationFrame;
+  window.cancelAnimationFrame = window.mozCancelAnimationFrame || window.webkitCancelAnimationFrame;
   texture = gl.createTexture();
   x1$ = new Image;
   x1$.onload = function(){
@@ -261,6 +290,17 @@ original commented source there. */
     draw();
   };
   x1$.src = 'ocean-current.png';
+  x2$ = new Image;
+  x2$.onload = function(){
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    draw();
+  };
+  x2$.src = 'ocean-current.png';
   setupBuffers();
   pointUnder = function(x, y){
     var ref$, left, top, det;
@@ -274,11 +314,11 @@ original commented source there. */
       return [x / Math.sqrt(x * x + y * y), y / Math.sqrt(x * x + y * y), 0];
     }
   };
-  x2$ = canvas;
-  x2$.addEventListener('mousedown', function(arg$){
+  x3$ = canvas;
+  x3$.addEventListener('mousedown', function(arg$){
     var i0, j0, p, rotate, stop;
     i0 = arg$.clientX, j0 = arg$.clientY;
-    x2$.style.cursor = 'move';
+    x3$.style.cursor = 'move';
     p = pointUnder(i0, j0);
     rotate = function(arg$){
       var i, j, q, cp, cq, angle, axis;
@@ -290,7 +330,7 @@ original commented source there. */
       axis = vec3.cross(cp, cq);
       currentRot = mat4.rotate(mat4.identity(), angle, axis);
     };
-    x2$.addEventListener('mousemove', rotate);
+    x3$.addEventListener('mousemove', rotate);
     stop = (function(ran){
       return function(){
         if (!ran) {
@@ -298,13 +338,13 @@ original commented source there. */
           mat4.multiply(currentRot, rotation, rotation);
           currentRot = mat4.identity();
         }
-        x2$.style.cursor = 'pointer';
-        x2$.removeEventListener('mousemove', rotate);
-        x2$.removeEventListener('mouseup', stop);
-        x2$.removeEventListener('mouseleave', stop);
+        x3$.style.cursor = 'pointer';
+        x3$.removeEventListener('mousemove', rotate);
+        x3$.removeEventListener('mouseup', stop);
+        x3$.removeEventListener('mouseleave', stop);
       };
     }.call(this, false));
-    x2$.addEventListener('mouseup', stop);
-    x2$.addEventListener('mouseleave', stop);
+    x3$.addEventListener('mouseup', stop);
+    x3$.addEventListener('mouseleave', stop);
   });
 }).call(this);

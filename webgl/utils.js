@@ -2,9 +2,20 @@
 original commented source there. */
 (function(){
   "use strict";
-  var log, degrees, radians, $, readPpm, shaderProgram, defer, reading, uniform, bindBuffer, createBuffer, out$ = typeof exports != 'undefined' && exports || this, slice$ = [].slice;
+  var get, set, clamp, log, degrees, radians, $, readPpm, shaderProgram, defer, reading, uniform, bindBuffer, createBuffer, out$ = typeof exports != 'undefined' && exports || this, slice$ = [].slice;
   mat4.translation = function(translation){
     return mat4.translate(mat4.identity(), translation);
+  };
+  out$.get = get = function(it){
+    try {
+      return JSON.parse(localStorage.getItem(it));
+    } catch (e$) {}
+  };
+  out$.set = set = function(key, it){
+    return localStorage.setItem(key, JSON.stringify(it));
+  };
+  out$.clamp = clamp = function(it, min, max){
+    return Math.min(max, Math.max(min, it));
   };
   out$.log = log = function(it){
     console.log(it);

@@ -35,7 +35,21 @@ gl
   &clearColor 0 0 0 1 # black
   &clear      COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT
 
-var rotation, current-rot, fov, distance
+arr = -> Array::slice.call it
+rotation =
+  try
+    new Float32Array get \rotation
+  catch
+    mat4.identity!
+current-rot =
+  try
+    new Float32Array get \current-rot
+  catch
+    mat4.identity!
+fov = parseInt do
+  get(\fov) or 15deg
+  10
+distance = get \distance or 1 / Math.tan(radians(fov) / 2)
 
 !function reset-stage
   rotation := mat4.identity!
@@ -43,13 +57,19 @@ var rotation, current-rot, fov, distance
   fov := 15deg
   distance := 1 / Math.tan(radians(fov) / 2)
 
-reset-stage!
+window.addEventListener \unload !->
+  set \rotation arr rotation
+  set \current-rot arr current-rot
+  set \distance distance
+  set \fov fov
 
-$ \zoom-in  .addEventListener \click !-> --fov
-$ \zoom-out .addEventListener \click !-> ++fov
+$ \reset .addEventListener \click reset-stage
+
+$ \zoom-in  .addEventListener \click !-> fov := clamp fov - 1, 1, 100
+$ \zoom-out .addEventListener \click !-> fov := clamp fov + 1, 1, 100
 
 addWheelListener document.body, !->
-  fov += it.deltaY / Math.abs it.deltaY
+  fov := clamp fov + it.deltaY / Math.abs(it.deltaY), 1, 100
 
 ctx = document.createElement \canvas .getContext \2d
 
@@ -172,6 +192,8 @@ p =
   orthogonal-lic  : load \orthogonalLic gl
   advection       : load \advection gl
   blend           : load \blend gl
+
+var frame
 
 export draw = !->
   # first: random noise injection and initial advection
@@ -322,10 +344,13 @@ export draw = !->
   gl.bindBuffer ELEMENT_ARRAY_BUFFER, buffers.idx
   gl.drawElements TRIANGLES, num-triangles, UNSIGNED_SHORT, 0
 
-  requestAnimationFrame draw
+  cancelAnimationFrame frame
+  frame := requestAnimationFrame draw
 
 window.requestAnimationFrame = window.mozRequestAnimationFrame
                             or window.webkitRequestAnimationFrame
+window.cancelAnimationFrame = window.mozCancelAnimationFrame
+                            or window.webkitCancelAnimationFrame
 
 # load texture
 texture = gl.createTexture!
@@ -342,7 +367,22 @@ new Image
 
   &src = \ocean-current.png
 
+new Image
+  &onload = !->
+    gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
+    gl.bindTexture gl.TEXTURE_2D, texture
+    gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this
+    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR
+    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST
+    gl.generateMipmap gl.TEXTURE_2D
+
+    draw!
+
+  &src = \ocean-current.png
+
 setup-buffers!
+
+
 
 # handling mouse rotation
 
