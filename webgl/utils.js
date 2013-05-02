@@ -2,7 +2,7 @@
 original commented source there. */
 (function(){
   "use strict";
-  var get, set, clamp, log, degrees, radians, $, readPpm, shaderProgram, defer, reading, uniform, bindBuffer, createBuffer, out$ = typeof exports != 'undefined' && exports || this, slice$ = [].slice;
+  var get, set, clamp, log, degrees, radians, $, readPpm, shaderProgram, defer, debounce, reading, uniform, bindBuffer, createBuffer, out$ = typeof exports != 'undefined' && exports || this, slice$ = [].slice;
   mat4.translation = function(translation){
     return mat4.translate(mat4.identity(), translation);
   };
@@ -91,6 +91,19 @@ original commented source there. */
   };
   out$.defer = defer = function(t, fn){
     return setTimeout(fn, t);
+  };
+  out$.debounce = debounce = function(delay, fn){
+    var timeout, ctx, args, run;
+    run = function(){
+      return fn.apply(ctx, args);
+    };
+    return function(){
+      var ctx, args;
+      clearTimeout(timeout);
+      ctx = this;
+      args = arguments;
+      timeout = defer(delay, run);
+    };
   };
   out$.reading = reading = function(id, readerFn, fn){
     var onchange, x0$;

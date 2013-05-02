@@ -84,6 +84,16 @@ export shader-program = ({vertex, fragment, uniforms ? {}}) -> (gl, ...args) ->
 
 export defer = (t, fn) -> setTimeout fn, t
 
+export debounce = (delay, fn) ->
+  var timeout, ctx, args
+  run = ->
+    fn.apply ctx, args
+  !->
+    clearTimeout timeout
+    ctx = this
+    args = arguments
+    timeout := defer delay, run
+
 # change handler for a file input
 export reading = (id, reader-fn, fn) ->
   onchange = !->

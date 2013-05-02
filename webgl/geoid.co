@@ -15,6 +15,11 @@ canvas{clientWidth: width, clientHeight: height} = document.documentElement
 
 {width, height} = canvas
 
+# resize
+window.addEventListener \resize debounce 250ms !->
+  canvas{clientWidth: width, clientHeight: height} = document.documentElement
+  {width, height} := canvas
+
 try
   window.gl =
     canvas.getContext \webgl or canvas.getContext \experimental-webgl
@@ -436,8 +441,6 @@ new Image
   &src = \blue-marble.jpg
 
 setup-buffers!
-
-
 
 # handling mouse rotation
 

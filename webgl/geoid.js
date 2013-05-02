@@ -6,6 +6,11 @@ original commented source there. */
   canvas = document.getElementById('canvas');
   ref$ = document.documentElement, canvas.width = ref$.clientWidth, canvas.height = ref$.clientHeight;
   width = canvas.width, height = canvas.height;
+  window.addEventListener('resize', debounce(250, function(){
+    var ref$;
+    ref$ = document.documentElement, canvas.width = ref$.clientWidth, canvas.height = ref$.clientHeight;
+    width = canvas.width, height = canvas.height;
+  }));
   try {
     window.gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
   } catch (e$) {}
