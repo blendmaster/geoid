@@ -60,9 +60,11 @@ original commented source there. */
     set('fov', fov);
     set('m', parseFloat($('m').value) || 10);
     set('n', parseFloat($('n').value) || 10);
+    set('blend-ratio', parseFloat($('blend-ratio').value) || 0.85);
   });
   $('m').value = get('m');
   $('n').value = get('n');
+  $('blend-ratio').value = get('blend-ratio');
   $('reset').addEventListener('click', resetStage);
   $('zoom-in').addEventListener('click', function(){
     fov = clamp(fov - 1, 1, 100);
@@ -164,7 +166,7 @@ original commented source there. */
     globe: load('globe', gl),
     noiseTransport: load('noiseTransport', gl),
     orthogonalLic: load('orthogonalLic', gl, 20, 20),
-    advection: load('advection', gl),
+    advection: load('advection', gl, 10),
     blend: load('blend', gl)
   };
   $('backwards').addEventListener('change', function(){
@@ -173,8 +175,11 @@ original commented source there. */
   $('backwards').addEventListener('change', function(){
     p.orthogonalLic = load('orthogonalLic', gl, parseInt($('backwards').value, 10), parseInt(this.value, 10));
   });
+  $('advection-steps').addEventListener('change', function(){
+    p.advection = load('advection', gl, parseInt(this.value, 10));
+  });
   out$.draw = draw = function(){
-    var x1$, x2$, x3$, x4$, x5$, x6$, x7$, x8$, x9$, x10$, x11$, x12$, x13$, x14$, x15$, x16$, rot, modelView, x17$, x18$, x19$, x20$, x21$, x22$;
+    var x1$, x2$, x3$, x4$, x5$, x6$, x7$, x8$, x9$, x10$, x11$, x12$, x13$, x14$, x15$, x16$, x17$, x18$, rot, modelView, x19$, x20$, x21$, x22$, x23$, x24$;
     gl.useProgram(p.noiseTransport);
     x1$ = gl;
     x1$.viewport(0, 0, 2048, 1024);
@@ -233,38 +238,42 @@ original commented source there. */
     gl.bindTexture(gl.TEXTURE_2D, blend.texture);
     x11$ = gl.getUniformLocation(p.advection, 'previousTexture');
     gl.uniform1i(x11$, 1);
+    x12$ = gl.getUniformLocation(p.advection, 'h');
+    gl.uniform1f(x12$, parseFloat($('advection-h').value));
     bindBuffer(gl, p.advection, 'vertexCoord', buffers.basicQuad, 2);
     bindBuffer(gl, p.advection, 'texCoord', buffers.basicQuadTex, 2);
     gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.basicQuadIndices);
     gl.drawElements(TRIANGLES, 6, UNSIGNED_SHORT, 0);
     gl.useProgram(p.blend);
-    x12$ = gl;
-    x12$.viewport(0, 0, 2048, 1024);
-    x12$.disable(DEPTH_TEST);
-    x12$.disable(CULL_FACE);
+    x13$ = gl;
+    x13$.viewport(0, 0, 2048, 1024);
+    x13$.disable(DEPTH_TEST);
+    x13$.disable(CULL_FACE);
     gl.bindFramebuffer(gl.FRAMEBUFFER, blend.framebuffer);
     gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, orthogonalLic.texture);
-    x13$ = gl.getUniformLocation(p.blend, 'orthogonalLIC');
-    gl.uniform1i(x13$, 0);
+    x14$ = gl.getUniformLocation(p.blend, 'orthogonalLIC');
+    gl.uniform1i(x14$, 0);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, advection.texture);
-    x14$ = gl.getUniformLocation(p.blend, 'advected');
-    gl.uniform1i(x14$, 1);
+    x15$ = gl.getUniformLocation(p.blend, 'advected');
+    gl.uniform1i(x15$, 1);
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    x15$ = gl.getUniformLocation(p.blend, 'oceanCurrent');
-    gl.uniform1i(x15$, 2);
+    x16$ = gl.getUniformLocation(p.blend, 'oceanCurrent');
+    gl.uniform1i(x16$, 2);
+    x17$ = gl.getUniformLocation(p.blend, 'ratio');
+    gl.uniform1f(x17$, parseFloat($('blend-ratio').value));
     bindBuffer(gl, p.orthogonalLic, 'vertexCoord', buffers.basicQuad, 2);
     bindBuffer(gl, p.orthogonalLic, 'texCoord', buffers.basicQuadTex, 2);
     gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.basicQuadIndices);
     gl.drawElements(TRIANGLES, 6, UNSIGNED_SHORT, 0);
     gl.useProgram(p.globe);
-    x16$ = gl;
-    x16$.viewport(0, 0, width, height);
-    x16$.enable(DEPTH_TEST);
-    x16$.enable(CULL_FACE);
+    x18$ = gl;
+    x18$.viewport(0, 0, width, height);
+    x18$.enable(DEPTH_TEST);
+    x18$.enable(CULL_FACE);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
     if (currentRot == null) {
@@ -279,22 +288,22 @@ original commented source there. */
     uniform(gl, p.globe, 'ModelViewMatrix', 'Matrix4fv', modelView);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, blend.texture);
-    x17$ = gl.getUniformLocation(p.globe, 'texture');
-    gl.uniform1i(x17$, 0);
+    x19$ = gl.getUniformLocation(p.globe, 'texture');
+    gl.uniform1i(x19$, 0);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    x18$ = gl.getUniformLocation(p.globe, 'oceanCurrent');
-    gl.uniform1i(x18$, 1);
+    x20$ = gl.getUniformLocation(p.globe, 'oceanCurrent');
+    gl.uniform1i(x20$, 1);
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, earthTexture);
-    x19$ = gl.getUniformLocation(p.globe, 'earthTexture');
-    gl.uniform1i(x19$, 2);
-    x20$ = gl.getUniformLocation(p.globe, 'mask');
-    gl.uniform1i(x20$, $('enable-mask').checked);
-    x21$ = gl.getUniformLocation(p.globe, 'm');
-    gl.uniform1f(x21$, parseFloat($('m').value) || 10);
-    x22$ = gl.getUniformLocation(p.globe, 'n');
-    gl.uniform1f(x22$, parseFloat($('n').value) || 3);
+    x21$ = gl.getUniformLocation(p.globe, 'earthTexture');
+    gl.uniform1i(x21$, 2);
+    x22$ = gl.getUniformLocation(p.globe, 'mask');
+    gl.uniform1i(x22$, $('enable-mask').checked);
+    x23$ = gl.getUniformLocation(p.globe, 'm');
+    gl.uniform1f(x23$, parseFloat($('m').value) || 10);
+    x24$ = gl.getUniformLocation(p.globe, 'n');
+    gl.uniform1f(x24$, parseFloat($('n').value) || 3);
     bindBuffer(gl, p.globe, 'modelCoord', buffers.modelCoord, 3);
     bindBuffer(gl, p.globe, 'texCoord', buffers.texCoord, 2);
     gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.idx);

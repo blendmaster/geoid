@@ -220,7 +220,7 @@ programs <<<
 
   advection: shader-program do
     vertex: plain-quad-vertex
-    fragment: """
+    fragment: (steps) -> """
       precision mediump float;
 
       uniform sampler2D oceanCurrent;
@@ -241,15 +241,15 @@ programs <<<
 
       vec2 size = vec2(1024., 512.);
 
+      uniform float h;
+
       void main() {
         if (isWater(tex)) {
           vec2 currentPosition = tex;
 
-          float h = 0.125;
-
           vec2 pos = tex;
           vec2 field = fieldAt(pos);
-          for(int i = 0; i < 35; ++i) {
+          for(int i = 0; i < #steps; ++i) {
             pos = pos - field * h / size;
             field = fieldAt(pos);
           }
@@ -260,6 +260,9 @@ programs <<<
         }
       }
     """
+    uniforms:
+      h:
+        \1f 0.125
   blend: shader-program do
     vertex: plain-quad-vertex
     fragment: """
@@ -283,11 +286,17 @@ programs <<<
 
       varying vec2 tex;
 
+      uniform float ratio;
+
       void main() {
-        vec4 pixel   = texture2D(orthogonalLIC, tex) * 0.05
-                     + texture2D(advected     , tex) * 0.95;
+        vec4 pixel   = mix(texture2D(orthogonalLIC, tex)
+                          ,texture2D(advected     , tex)
+                          ,ratio);
 
         gl_FragColor = pixel;
       }
     """
+    uniforms:
+      ratio:
+        \1f 0.85
 

@@ -36,10 +36,18 @@ original commented source there. */
   });
   programs.advection = shaderProgram({
     vertex: plainQuadVertex,
-    fragment: "precision mediump float;\n\nuniform sampler2D oceanCurrent;\nuniform sampler2D previousTexture;\n\nvarying vec2 tex;\n\n// transform packed texture field\nvec2 fieldAt(vec2 coords) {\n  vec3 val = texture2D(oceanCurrent, coords).xyz;\n  return vec2(val.x - 0.5, val.y - 0.5);\n}\n\nbool isWater(vec2 coords) {\n  vec3 val = texture2D(oceanCurrent, coords).xyz;\n  return val.z != 0.0;\n}\n\nvec2 size = vec2(1024., 512.);\n\nvoid main() {\n  if (isWater(tex)) {\n    vec2 currentPosition = tex;\n\n    float h = 0.125;\n\n    vec2 pos = tex;\n    vec2 field = fieldAt(pos);\n    for(int i = 0; i < 35; ++i) {\n      pos = pos - field * h / size;\n      field = fieldAt(pos);\n    }\n\n    gl_FragColor = vec4(texture2D(previousTexture, pos));\n  } else {\n    gl_FragColor = texture2D(previousTexture, tex);\n  }\n}"
+    fragment: function(steps){
+      return "precision mediump float;\n\nuniform sampler2D oceanCurrent;\nuniform sampler2D previousTexture;\n\nvarying vec2 tex;\n\n// transform packed texture field\nvec2 fieldAt(vec2 coords) {\n  vec3 val = texture2D(oceanCurrent, coords).xyz;\n  return vec2(val.x - 0.5, val.y - 0.5);\n}\n\nbool isWater(vec2 coords) {\n  vec3 val = texture2D(oceanCurrent, coords).xyz;\n  return val.z != 0.0;\n}\n\nvec2 size = vec2(1024., 512.);\n\nuniform float h;\n\nvoid main() {\n  if (isWater(tex)) {\n    vec2 currentPosition = tex;\n\n    vec2 pos = tex;\n    vec2 field = fieldAt(pos);\n    for(int i = 0; i < " + steps + "; ++i) {\n      pos = pos - field * h / size;\n      field = fieldAt(pos);\n    }\n\n    gl_FragColor = vec4(texture2D(previousTexture, pos));\n  } else {\n    gl_FragColor = texture2D(previousTexture, tex);\n  }\n}";
+    },
+    uniforms: {
+      h: ['1f', 0.125]
+    }
   });
   programs.blend = shaderProgram({
     vertex: plainQuadVertex,
-    fragment: "precision mediump float;\n\nuniform sampler2D orthogonalLIC;\nuniform sampler2D advected;\n\nuniform sampler2D oceanCurrent;\n\nbool isWater(vec2 coords) {\n  vec3 val = texture2D(oceanCurrent, coords).xyz;\n  return val.z != 0.0;\n}\n\n// transform packed texture field\nvec2 fieldAt(vec2 coords) {\n  vec3 val = texture2D(oceanCurrent, coords).xyz;\n  return vec2(val.x - 0.5, val.y - 0.5);\n}\n\nvarying vec2 tex;\n\nvoid main() {\n  vec4 pixel   = texture2D(orthogonalLIC, tex) * 0.05\n               + texture2D(advected     , tex) * 0.95;\n\n  gl_FragColor = pixel;\n}"
+    fragment: "precision mediump float;\n\nuniform sampler2D orthogonalLIC;\nuniform sampler2D advected;\n\nuniform sampler2D oceanCurrent;\n\nbool isWater(vec2 coords) {\n  vec3 val = texture2D(oceanCurrent, coords).xyz;\n  return val.z != 0.0;\n}\n\n// transform packed texture field\nvec2 fieldAt(vec2 coords) {\n  vec3 val = texture2D(oceanCurrent, coords).xyz;\n  return vec2(val.x - 0.5, val.y - 0.5);\n}\n\nvarying vec2 tex;\n\nuniform float ratio;\n\nvoid main() {\n  vec4 pixel   = mix(texture2D(orthogonalLIC, tex)\n                    ,texture2D(advected     , tex)\n                    ,ratio);\n\n  gl_FragColor = pixel;\n}",
+    uniforms: {
+      ratio: ['1f', 0.85]
+    }
   });
 }).call(this);

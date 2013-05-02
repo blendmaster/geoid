@@ -68,9 +68,12 @@ window.addEventListener \unload !->
 
   set \m (parseFloat $(\m)value) || 10
   set \n (parseFloat $(\n)value) || 10
+  set \blend-ratio (parseFloat $(\blend-ratio)value) || 0.85
 
 $(\m)value = get \m
 $(\n)value = get \n
+
+$(\blend-ratio)value = get \blend-ratio
 
 $ \reset .addEventListener \click reset-stage
 
@@ -201,7 +204,7 @@ p =
   orthogonal-lic  : load do
     \orthogonalLic gl
     20, 20
-  advection       : load \advection gl
+  advection       : load \advection gl, 10
   blend           : load \blend gl
 
 # XXX since the LIC steps are in loops, and GLSL doesn't do loops that can't be 
@@ -216,6 +219,8 @@ $ \backwards .addEventListener \change !->
     \orthogonalLic gl
     parseInt $(\backwards)value, 10
     parseInt @value, 10
+$ \advection-steps .addEventListener \change !->
+  p.advection = load \advection gl, parseInt(@value, 10)
 
 # the requestAnimationFrame id, so we don't get more than one
 var frame
@@ -299,6 +304,9 @@ export draw = !->
   gl.getUniformLocation p.advection, \previousTexture
     gl.uniform1i &, 1
 
+  gl.getUniformLocation p.advection, \h
+    gl.uniform1f &, parseFloat($ \advection-h .value)
+
   bind-buffer gl, p.advection, \vertexCoord, buffers.basic-quad, 2
   bind-buffer gl, p.advection, \texCoord, buffers.basic-quad-tex, 2
 
@@ -328,6 +336,9 @@ export draw = !->
   gl.bindTexture gl.TEXTURE_2D, texture
   gl.getUniformLocation p.blend, \oceanCurrent
     gl.uniform1i &, 2
+
+  gl.getUniformLocation p.blend, \ratio
+    gl.uniform1f &, parseFloat $(\blend-ratio)value
 
   bind-buffer gl, p.orthogonal-lic, \vertexCoord, buffers.basic-quad, 2
   bind-buffer gl, p.orthogonal-lic, \texCoord, buffers.basic-quad-tex, 2

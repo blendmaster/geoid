@@ -52,9 +52,18 @@
       <label><input type=radio name=lic-type id=orthogonal checked>Orthogonal</label>
       <label><input type=radio name=lic-type id=parallel>Parallel</label>
     </div>
-    <div><label>Step Size: <input type=range min=0.05 max=1 step=0.05 id=lic-h></label></div>
-    <div><label>Backwards: <input type=range min=1 max=50 step=1 id=backwards></label></div>
-    <div><label>Forwards: <input type=range min=1 max=50 step=1 id=Forwards></label></div>
+    <div><label>Step Size: <input type=range min=0.05 max=1 step=0.01 id=lic-h></label></div>
+    <div><label>Backwards: <input type=range min=1 max=30 step=1 id=backwards></label></div>
+    <div><label>Forwards: <input type=range min=1 max=30 step=1 id=Forwards></label></div>
+  </section>
+  <section>
+    <h2>Advection</h2>
+    <div><label>Step Size: <input type=range min=0.05 max=1 step=0.01 id=advection-h></label></div>
+    <div><label>Steps: <input type=range min=1 max=30 step=1 id=advection-steps></label></div>
+  </section>
+  <section>
+    <h2>Blending</h2>
+    <div><label>Ratio: <input type=range min=0.00 max=1 step=0.01 id=blend-ratio></label></div>
   </section>
   <footer>
     <small>
