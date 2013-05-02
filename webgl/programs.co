@@ -66,6 +66,12 @@ programs <<<
         return vec2(val.x - 0.5, val.y - 0.5);
       }
 
+      // tweak variables for masking
+      uniform float m;
+      uniform float n;
+
+      uniform bool mask;
+
       void main() {
         if (isWater(tex)) {
           vec4 pixel = texture2D(texture, tex);
@@ -74,16 +80,24 @@ programs <<<
 
           // not in paper, but in 2002 e/l texture advection:
           // masking by magnitude
-          float m = 10.;
-          float n = 3.;
-          float ratio = min(magnitude / 0.5, 1.);
-          vec4 alpha = (1. - pow(1. - ratio, m)) * (1. - pow(1. - pixel, vec4(n)));
+          vec4 alpha = vec4(1., 1., 1., 1.);
+          if (mask) {
+            float ratio = min(magnitude / 0.5, 1.);
+            alpha = (1. - pow(1. - ratio, m)) * (1. - pow(1. - pixel, vec4(n)));
+          }
 
           gl_FragColor = pixel * alpha;
         } else {
           gl_FragColor = texture2D(earthTexture, tex);
         }
       }"""
+    uniforms:
+      mask:
+        \1i true
+      m:
+        \1f 10
+      n:
+        \1f 3
   noise-transport: shader-program do
     vertex: plain-quad-vertex
     fragment: """

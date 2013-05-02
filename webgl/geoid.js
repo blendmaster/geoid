@@ -162,7 +162,7 @@ original commented source there. */
     blend: load('blend', gl)
   };
   out$.draw = draw = function(){
-    var x1$, x2$, x3$, x4$, x5$, x6$, x7$, x8$, x9$, x10$, x11$, x12$, x13$, x14$, rot, modelView, x15$, x16$, x17$;
+    var x1$, x2$, x3$, x4$, x5$, x6$, x7$, x8$, x9$, x10$, x11$, x12$, x13$, x14$, rot, modelView, x15$, x16$, x17$, x18$, x19$, x20$;
     gl.useProgram(p.noiseTransport);
     x1$ = gl;
     x1$.viewport(0, 0, 2048, 1024);
@@ -273,6 +273,12 @@ original commented source there. */
     gl.bindTexture(gl.TEXTURE_2D, earthTexture);
     x17$ = gl.getUniformLocation(p.globe, 'earthTexture');
     gl.uniform1i(x17$, 2);
+    x18$ = gl.getUniformLocation(p.globe, 'mask');
+    gl.uniform1i(x18$, $('enable-mask').checked);
+    x19$ = gl.getUniformLocation(p.globe, 'm');
+    gl.uniform1f(x19$, parseFloat($('m').value) || 10);
+    x20$ = gl.getUniformLocation(p.globe, 'n');
+    gl.uniform1f(x20$, parseFloat($('n').value) || 3);
     bindBuffer(gl, p.globe, 'modelCoord', buffers.modelCoord, 3);
     bindBuffer(gl, p.globe, 'texCoord', buffers.texCoord, 2);
     gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.idx);

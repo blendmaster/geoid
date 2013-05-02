@@ -10,7 +10,12 @@ original commented source there. */
   plainQuadVertex = "precision mediump float;\n\nattribute vec2 vertexCoord;\nattribute vec2 texCoord;\n\nvarying vec2 tex;\n\nvoid main() {\n  tex = texCoord;\n  gl_Position = vec4(vertexCoord.xy, 1., 1);\n}";
   programs.globe = shaderProgram({
     vertex: "precision mediump float;\n\nattribute vec3 modelCoord;\nattribute vec2 texCoord;\n\nvarying vec2 tex;\n\nuniform mat4 ModelViewMatrix;\nuniform mat4 ProjectionMatrix;\n\nvoid main() {\n  tex = texCoord;\n\n  vec4 WorldCoord = ModelViewMatrix * vec4(modelCoord,1.0);\n\n  gl_Position = ProjectionMatrix * WorldCoord;\n}",
-    fragment: "precision mediump float;\n\nuniform sampler2D texture;\n\nvarying vec2 tex; // coords\n\nuniform sampler2D oceanCurrent;\nuniform sampler2D earthTexture;\n\nbool isWater(vec2 coords) {\n  vec3 val = texture2D(oceanCurrent, coords).xyz;\n  return val.z != 0.0;\n}\n\n// transform packed texture field\nvec2 fieldAt(vec2 coords) {\n  vec3 val = texture2D(oceanCurrent, coords).xyz;\n  return vec2(val.x - 0.5, val.y - 0.5);\n}\n\nvoid main() {\n  if (isWater(tex)) {\n    vec4 pixel = texture2D(texture, tex);\n\n    float magnitude = length(fieldAt(tex));\n\n    // not in paper, but in 2002 e/l texture advection:\n    // masking by magnitude\n    float m = 10.;\n    float n = 3.;\n    float ratio = min(magnitude / 0.5, 1.);\n    vec4 alpha = (1. - pow(1. - ratio, m)) * (1. - pow(1. - pixel, vec4(n)));\n\n    gl_FragColor = pixel * alpha;\n  } else {\n    gl_FragColor = texture2D(earthTexture, tex);\n  }\n}"
+    fragment: "precision mediump float;\n\nuniform sampler2D texture;\n\nvarying vec2 tex; // coords\n\nuniform sampler2D oceanCurrent;\nuniform sampler2D earthTexture;\n\nbool isWater(vec2 coords) {\n  vec3 val = texture2D(oceanCurrent, coords).xyz;\n  return val.z != 0.0;\n}\n\n// transform packed texture field\nvec2 fieldAt(vec2 coords) {\n  vec3 val = texture2D(oceanCurrent, coords).xyz;\n  return vec2(val.x - 0.5, val.y - 0.5);\n}\n\n// tweak variables for masking\nuniform float m;\nuniform float n;\n\nuniform bool mask;\n\nvoid main() {\n  if (isWater(tex)) {\n    vec4 pixel = texture2D(texture, tex);\n\n    float magnitude = length(fieldAt(tex));\n\n    // not in paper, but in 2002 e/l texture advection:\n    // masking by magnitude\n    vec4 alpha = vec4(1., 1., 1., 1.);\n    if (mask) {\n      float ratio = min(magnitude / 0.5, 1.);\n      alpha = (1. - pow(1. - ratio, m)) * (1. - pow(1. - pixel, vec4(n)));\n    }\n\n    gl_FragColor = pixel * alpha;\n  } else {\n    gl_FragColor = texture2D(earthTexture, tex);\n  }\n}",
+    uniforms: {
+      mask: ['1i', true],
+      m: ['1f', 10],
+      n: ['1f', 3]
+    }
   });
   programs.noiseTransport = shaderProgram({
     vertex: plainQuadVertex,

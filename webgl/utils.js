@@ -78,6 +78,7 @@ original commented source there. */
       if (!gl.getProgramParameter(x2$, LINK_STATUS)) {
         throw new Error("couldn't intialize shader program!");
       }
+      gl.useProgram(program);
       for (name in ref$ = uniforms) {
         ref1$ = ref$[name], type = ref1$[0], value = slice$.call(ref1$, 1);
         gl["uniform" + type].apply(gl, [gl.getUniformLocation(program, name)].concat(value));

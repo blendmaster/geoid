@@ -68,6 +68,8 @@ export shader-program = ({vertex, fragment, uniforms ? {}}) -> (gl) ->
     unless gl.getProgramParameter (&), LINK_STATUS
       throw new Error "couldn't intialize shader program!"
 
+  gl.useProgram program
+
   for name, [type, ...value] in uniforms
     gl"uniform#type".apply do
       gl
