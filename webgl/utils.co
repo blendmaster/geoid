@@ -48,7 +48,7 @@ export read-ppm = (gl, it) ->
 
 # from vertex and fragment glsl source, a function that attaches the program
 # and runs initialization code provided
-export shader-program = ({vertex, fragment, uniforms ? {}}) -> (gl) ->
+export shader-program = ({vertex, fragment, uniforms ? {}}) -> (gl, ...args) ->
   vertex-shader = gl.createShader gl.VERTEX_SHADER
     gl.shaderSource (&), vertex
     gl.compileShader (&)
@@ -56,7 +56,12 @@ export shader-program = ({vertex, fragment, uniforms ? {}}) -> (gl) ->
       throw new Error "couldn't compile vertex shader!\n#{gl.getShaderInfoLog(&)}"
 
   fragment-shader = gl.createShader gl.FRAGMENT_SHADER
-    gl.shaderSource (&), fragment
+    gl.shaderSource do
+      &
+      if typeof fragment is \string
+        fragment
+      else
+        fragment.apply null, args
     gl.compileShader (&)
     unless gl.getShaderParameter (&), COMPILE_STATUS
       throw new Error "couldn't compile fragment shader!\n#{gl.getShaderInfoLog(&)}"

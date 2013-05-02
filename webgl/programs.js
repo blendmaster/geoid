@@ -2,10 +2,12 @@
 original commented source there. */
 (function(){
   "use strict";
-  var programs, load, plainQuadVertex, out$ = typeof exports != 'undefined' && exports || this;
+  var programs, load, plainQuadVertex, out$ = typeof exports != 'undefined' && exports || this, slice$ = [].slice;
   programs = {};
-  out$.load = load = function(it, gl){
-    return programs[it](gl);
+  out$.load = load = function(it){
+    var args;
+    args = slice$.call(arguments, 1);
+    return programs[it].apply(null, args);
   };
   plainQuadVertex = "precision mediump float;\n\nattribute vec2 vertexCoord;\nattribute vec2 texCoord;\n\nvarying vec2 tex;\n\nvoid main() {\n  tex = texCoord;\n  gl_Position = vec4(vertexCoord.xy, 1., 1);\n}";
   programs.globe = shaderProgram({
@@ -23,7 +25,14 @@ original commented source there. */
   });
   programs.orthogonalLic = shaderProgram({
     vertex: plainQuadVertex,
-    fragment: "precision mediump float;\n\nuniform sampler2D oceanCurrent;\nuniform sampler2D transportedNoise;\n\nvarying vec2 tex;\n\n// transform packed texture field\nvec2 orthogonalFieldAt(vec2 coords) {\n  vec3 val = texture2D(oceanCurrent, coords).xyz;\n  return vec2(-(val.y - 0.5), val.x - 0.5);\n}\n\nbool isWater(vec2 coords) {\n  vec3 val = texture2D(oceanCurrent, coords).xyz;\n  return val.z != 0.0;\n}\n\nvec2 size = vec2(1024., 512.);\n\nvoid main() {\n  if (isWater(tex)) {\n    float h = 0.75;\n\n    // LIC backwards and forwards\n    vec3 pixel = vec3(0.0, 0.0, 0.0);\n    vec2 pos = tex;\n\n    vec2 field = orthogonalFieldAt(pos);\n    for(int i = 0; i < 25; ++i) {\n      pixel = pixel + texture2D(transportedNoise, pos).rgb;\n      pos = pos - field * h / size;\n      field = orthogonalFieldAt(pos);\n    }\n    pos = tex;\n    field = orthogonalFieldAt(pos);\n    for(int i = 0; i < 25; ++i) {\n      pixel = pixel + texture2D(transportedNoise, pos).rgb;\n      pos = pos + field * h / size;\n      field = orthogonalFieldAt(pos);\n    }\n\n    // average\n    pixel = pixel / 50.0;\n\n    gl_FragColor = vec4(pixel, 1.0);\n  } else {\n    gl_FragColor = texture2D(transportedNoise, tex);\n  }\n}"
+    fragment: function(stepsForwards, stepsBackwards){
+      return "precision mediump float;\n\nuniform sampler2D oceanCurrent;\nuniform sampler2D transportedNoise;\n\nvarying vec2 tex;\n\nuniform bool useOrthogonal;\n\n// transform packed texture field\nvec2 orthogonalFieldAt(vec2 coords) {\n  vec3 val = texture2D(oceanCurrent, coords).xyz;\n  if (useOrthogonal) {\n    return vec2(-(val.y - 0.5), val.x - 0.5);\n  } else {\n    return vec2((val.x - 0.5), val.y - 0.5);\n  }\n}\n\nbool isWater(vec2 coords) {\n  vec3 val = texture2D(oceanCurrent, coords).xyz;\n  return val.z != 0.0;\n}\n\nuniform vec2 size;\nuniform float h;\n\n// loops have to be unrolled so use global state and recompile instead\n// TODO better way to do this\nconst int stepsBackwards = " + stepsBackwards + ";\nconst int stepsForwards = " + stepsForwards + ";\n\nvoid main() {\n  if (isWater(tex)) {\n    // LIC backwards and forwards\n    vec3 pixel = vec3(0.0, 0.0, 0.0);\n    vec2 pos = tex;\n\n    vec2 field = orthogonalFieldAt(pos);\n    for(int i = 0; i < stepsBackwards; ++i) {\n      pixel = pixel + texture2D(transportedNoise, pos).rgb;\n      pos = pos - field * h / size;\n      field = orthogonalFieldAt(pos);\n    }\n    pos = tex;\n    field = orthogonalFieldAt(pos);\n    for(int i = 0; i < stepsForwards; ++i) {\n      pixel = pixel + texture2D(transportedNoise, pos).rgb;\n      pos = pos + field * h / size;\n      field = orthogonalFieldAt(pos);\n    }\n\n    // average\n    pixel = pixel / " + (stepsForwards + stepsBackwards) + ".0;\n\n    gl_FragColor = vec4(pixel, 1.0);\n  } else {\n    gl_FragColor = texture2D(transportedNoise, tex);\n  }\n}";
+    },
+    uniforms: {
+      size: ['2f', 1024, 512],
+      h: ['1f', 0.75],
+      useOrthogonal: ['1i', true]
+    }
   });
   programs.advection = shaderProgram({
     vertex: plainQuadVertex,

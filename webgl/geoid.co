@@ -198,10 +198,26 @@ num-triangles = latBands * lonBands * 6
 p =
   globe           : load \globe gl
   noise-transport : load \noiseTransport gl
-  orthogonal-lic  : load \orthogonalLic gl
+  orthogonal-lic  : load do
+    \orthogonalLic gl
+    20, 20
   advection       : load \advection gl
   blend           : load \blend gl
 
+# XXX since the LIC steps are in loops, and GLSL doesn't do loops that can't be 
+# unrolled, we must recompile the shader if they change
+$ \backwards .addEventListener \change !->
+  p.orthogonalLic = load do
+    \orthogonalLic gl
+    parseInt @value, 10
+    parseInt $(\forwards)value, 10
+$ \backwards .addEventListener \change !->
+  p.orthogonalLic = load do
+    \orthogonalLic gl
+    parseInt $(\backwards)value, 10
+    parseInt @value, 10
+
+# the requestAnimationFrame id, so we don't get more than one
 var frame
 
 export draw = !->
@@ -251,6 +267,12 @@ export draw = !->
   gl.bindTexture gl.TEXTURE_2D, noise-transport.texture
   gl.getUniformLocation p.orthogonal-lic, \transportedNoise
     gl.uniform1i &, 1
+
+  gl.getUniformLocation p.orthogonal-lic, \useOrthogonal
+    gl.uniform1i &, $(\orthogonal)checked
+
+  gl.getUniformLocation p.orthogonal-lic, \h
+    gl.uniform1f &, parseFloat $(\lic-h)value
 
   bind-buffer gl, p.orthogonal-lic, \vertexCoord, buffers.basic-quad, 2
   bind-buffer gl, p.orthogonal-lic, \texCoord, buffers.basic-quad-tex, 2

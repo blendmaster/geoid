@@ -9,7 +9,7 @@ original commented source there. */
 
 programs = {}
 
-export load = (it, gl) -> programs[it] gl
+export load = (it, ...args) -> programs[it].apply null, args
 
 plain-quad-vertex =  """
   precision mediump float;
@@ -148,7 +148,7 @@ programs <<<
     """
   orthogonal-lic: shader-program do
     vertex: plain-quad-vertex
-    fragment: """
+    fragment: (stepsForwards, stepsBackwards) -> """
       precision mediump float;
 
       uniform sampler2D oceanCurrent;
@@ -156,10 +156,16 @@ programs <<<
 
       varying vec2 tex;
 
+      uniform bool useOrthogonal;
+
       // transform packed texture field
       vec2 orthogonalFieldAt(vec2 coords) {
         vec3 val = texture2D(oceanCurrent, coords).xyz;
-        return vec2(-(val.y - 0.5), val.x - 0.5);
+        if (useOrthogonal) {
+          return vec2(-(val.y - 0.5), val.x - 0.5);
+        } else {
+          return vec2((val.x - 0.5), val.y - 0.5);
+        }
       }
 
       bool isWater(vec2 coords) {
@@ -167,32 +173,36 @@ programs <<<
         return val.z != 0.0;
       }
 
-      vec2 size = vec2(1024., 512.);
+      uniform vec2 size;
+      uniform float h;
+
+      // loops have to be unrolled so use global state and recompile instead
+      // TODO better way to do this
+      const int stepsBackwards = #stepsBackwards;
+      const int stepsForwards = #stepsForwards;
 
       void main() {
         if (isWater(tex)) {
-          float h = 0.75;
-
           // LIC backwards and forwards
           vec3 pixel = vec3(0.0, 0.0, 0.0);
           vec2 pos = tex;
 
           vec2 field = orthogonalFieldAt(pos);
-          for(int i = 0; i < 25; ++i) {
+          for(int i = 0; i < stepsBackwards; ++i) {
             pixel = pixel + texture2D(transportedNoise, pos).rgb;
             pos = pos - field * h / size;
             field = orthogonalFieldAt(pos);
           }
           pos = tex;
           field = orthogonalFieldAt(pos);
-          for(int i = 0; i < 25; ++i) {
+          for(int i = 0; i < stepsForwards; ++i) {
             pixel = pixel + texture2D(transportedNoise, pos).rgb;
             pos = pos + field * h / size;
             field = orthogonalFieldAt(pos);
           }
 
           // average
-          pixel = pixel / 50.0;
+          pixel = pixel / #{stepsForwards + stepsBackwards}.0;
 
           gl_FragColor = vec4(pixel, 1.0);
         } else {
@@ -200,6 +210,14 @@ programs <<<
         }
       }
     """
+    uniforms:
+      size:
+        \2f 1024 512
+      h:
+        \1f 0.75
+      useOrthogonal:
+        \1i true
+
   advection: shader-program do
     vertex: plain-quad-vertex
     fragment: """

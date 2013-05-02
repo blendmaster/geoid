@@ -58,7 +58,8 @@ original commented source there. */
       ? ref$
       : {};
     return function(gl){
-      var x0$, vertexShader, x1$, fragmentShader, x2$, program, name, ref$, ref1$, type, value;
+      var args, x0$, vertexShader, x1$, fragmentShader, x2$, program, name, ref$, ref1$, type, value;
+      args = slice$.call(arguments, 1);
       x0$ = vertexShader = gl.createShader(gl.VERTEX_SHADER);
       gl.shaderSource(x0$, vertex);
       gl.compileShader(x0$);
@@ -66,7 +67,9 @@ original commented source there. */
         throw new Error("couldn't compile vertex shader!\n" + gl.getShaderInfoLog(x0$));
       }
       x1$ = fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
-      gl.shaderSource(x1$, fragment);
+      gl.shaderSource(x1$, typeof fragment === 'string'
+        ? fragment
+        : fragment.apply(null, args));
       gl.compileShader(x1$);
       if (!gl.getShaderParameter(x1$, COMPILE_STATUS)) {
         throw new Error("couldn't compile fragment shader!\n" + gl.getShaderInfoLog(x1$));
