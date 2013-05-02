@@ -53,6 +53,7 @@ programs <<<
       varying vec2 tex; // coords
 
       uniform sampler2D oceanCurrent;
+      uniform sampler2D earthTexture;
 
       bool isWater(vec2 coords) {
         vec3 val = texture2D(oceanCurrent, coords).xyz;
@@ -80,7 +81,7 @@ programs <<<
 
           gl_FragColor = pixel * alpha;
         } else {
-          gl_FragColor = vec4(0, 0.5, 0, 1.0);
+          gl_FragColor = texture2D(earthTexture, tex);
         }
       }"""
   noise-transport: shader-program do
