@@ -48,6 +48,9 @@ reset-stage!
 $ \zoom-in  .addEventListener \click !-> --fov
 $ \zoom-out .addEventListener \click !-> ++fov
 
+addWheelListener document.body, !->
+  fov += it.deltaY / Math.abs it.deltaY
+
 ctx = document.createElement \canvas .getContext \2d
 
 function gen-noise width, height

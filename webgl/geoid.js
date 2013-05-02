@@ -37,6 +37,9 @@ original commented source there. */
   $('zoom-out').addEventListener('click', function(){
     ++fov;
   });
+  addWheelListener(document.body, function(it){
+    fov += it.deltaY / Math.abs(it.deltaY);
+  });
   ctx = document.createElement('canvas').getContext('2d');
   function genNoise(width, height){
     var x1$, x2$, i, to$;
