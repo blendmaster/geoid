@@ -96,7 +96,7 @@ programs <<<
           }
 
           gl_FragColor = pixel * alpha;
-          gl_FragColor.b = gl_FragColor.b / 0.8 + 0.2;
+          gl_FragColor.b = gl_FragColor.b / 0.9 + 0.1;
         } else {
           gl_FragColor = texture2D(earthTexture, tex);
         }
