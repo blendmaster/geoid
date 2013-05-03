@@ -121,12 +121,8 @@ max-val = $ \max-value
   &value = parseFloat get \max-val
 
 reclamp = !->
-  console.log min-val.value
-  console.log max-val.value
   min-val.value = Math.min 0.5 parseFloat min-val.value
   max-val.value = Math.max 0.5 parseFloat max-val.value
-  console.log min-val.value
-  console.log max-val.value
 
 reclamp! if symmetric.checked
 symmetric.addEventListener \change !-> reclamp! if @checked
@@ -147,8 +143,8 @@ function gen-noise width, height
   ctx.createImageData width, height
     &data
       for i til width * height * 4 by 4
-        &[i] = &[i + 1] = if Math.random! >= 0.5 then 255 else 0
-        &[i + 2] = &[i + 3] = 255
+        &[i] = &[i + 1] = &[i + 2] = if Math.random! >= 0.5 then 255 else 0
+        &[i + 3] = 255
 
 export buffers = {}
 
@@ -437,7 +433,8 @@ export draw = !->
     gl.uniform1i &, 1
 
   gl.activeTexture gl.TEXTURE2
-  gl.bindTexture gl.TEXTURE_2D, earth-texture
+  gl.bindTexture gl.TEXTURE_2D,
+    if $(\day)checked then earth-texture else night-texture
   gl.getUniformLocation p.globe, \earthTexture
     gl.uniform1i &, 2
 
@@ -498,6 +495,20 @@ new Image
     draw!
 
   &src = \blue-marble.jpg
+
+night-texture = gl.createTexture!
+new Image
+  &onload = !->
+    gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
+    gl.bindTexture gl.TEXTURE_2D, night-texture
+    gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this
+    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR
+    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST
+    gl.generateMipmap gl.TEXTURE_2D
+
+    draw!
+
+  &src = \black-marble.jpg
 
 setup-buffers!
 

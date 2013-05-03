@@ -2,7 +2,7 @@
 original commented source there. */
 (function(){
   "use strict";
-  var canvas, ref$, width, height, k, ref1$, v, x0$, arr, rotation, e, currentRot, fov, distance, symmetric, x1$, minVal, x2$, maxVal, reclamp, ctx, buffers, latBands, lonBands, noiseTex, noiseTransport, orthogonalLic, advection, blend, setupBuffers, numTriangles, p, frame, draw, texture, x3$, earthTexture, x4$, pointUnder, x5$, out$ = typeof exports != 'undefined' && exports || this;
+  var canvas, ref$, width, height, k, ref1$, v, x0$, arr, rotation, e, currentRot, fov, distance, symmetric, x1$, minVal, x2$, maxVal, reclamp, ctx, buffers, latBands, lonBands, noiseTex, noiseTransport, orthogonalLic, advection, blend, setupBuffers, numTriangles, p, frame, draw, texture, x3$, earthTexture, x4$, nightTexture, x5$, pointUnder, x6$, out$ = typeof exports != 'undefined' && exports || this;
   canvas = document.getElementById('canvas');
   ref$ = document.documentElement, canvas.width = ref$.clientWidth, canvas.height = ref$.clientHeight;
   width = canvas.width, height = canvas.height;
@@ -101,12 +101,8 @@ original commented source there. */
   x2$ = maxVal = $('max-value');
   x2$.value = parseFloat(get('max-val'));
   reclamp = function(){
-    console.log(minVal.value);
-    console.log(maxVal.value);
     minVal.value = Math.min(0.5, parseFloat(minVal.value));
     maxVal.value = Math.max(0.5, parseFloat(maxVal.value));
-    console.log(minVal.value);
-    console.log(maxVal.value);
   };
   if (symmetric.checked) {
     reclamp();
@@ -135,8 +131,8 @@ original commented source there. */
     x3$ = ctx.createImageData(width, height);
     x4$ = x3$.data;
     for (i = 0, to$ = width * height * 4; i < to$; i += 4) {
-      x4$[i] = x4$[i + 1] = Math.random() >= 0.5 ? 255 : 0;
-      x4$[i + 2] = x4$[i + 3] = 255;
+      x4$[i] = x4$[i + 1] = x4$[i + 2] = Math.random() >= 0.5 ? 255 : 0;
+      x4$[i + 3] = 255;
     }
     return x3$;
   }
@@ -349,7 +345,7 @@ original commented source there. */
     x22$ = gl.getUniformLocation(p.globe, 'oceanCurrent');
     gl.uniform1i(x22$, 1);
     gl.activeTexture(gl.TEXTURE2);
-    gl.bindTexture(gl.TEXTURE_2D, earthTexture);
+    gl.bindTexture(gl.TEXTURE_2D, $('day').checked ? earthTexture : nightTexture);
     x23$ = gl.getUniformLocation(p.globe, 'earthTexture');
     gl.uniform1i(x23$, 2);
     x24$ = gl.getUniformLocation(p.globe, 'mask');
@@ -395,6 +391,18 @@ original commented source there. */
     draw();
   };
   x4$.src = 'blue-marble.jpg';
+  nightTexture = gl.createTexture();
+  x5$ = new Image;
+  x5$.onload = function(){
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.bindTexture(gl.TEXTURE_2D, nightTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    draw();
+  };
+  x5$.src = 'black-marble.jpg';
   setupBuffers();
   pointUnder = function(x, y){
     var ref$, left, top, det;
@@ -408,11 +416,11 @@ original commented source there. */
       return [x / Math.sqrt(x * x + y * y), y / Math.sqrt(x * x + y * y), 0];
     }
   };
-  x5$ = canvas;
-  x5$.addEventListener('mousedown', function(arg$){
+  x6$ = canvas;
+  x6$.addEventListener('mousedown', function(arg$){
     var i0, j0, p, rotate, stop;
     i0 = arg$.clientX, j0 = arg$.clientY;
-    x5$.style.cursor = 'move';
+    x6$.style.cursor = 'move';
     p = pointUnder(i0, j0);
     rotate = function(arg$){
       var i, j, q, cp, cq, angle, axis;
@@ -424,7 +432,7 @@ original commented source there. */
       axis = vec3.cross(cp, cq);
       currentRot = mat4.rotate(mat4.identity(), angle, axis);
     };
-    x5$.addEventListener('mousemove', rotate);
+    x6$.addEventListener('mousemove', rotate);
     stop = (function(ran){
       return function(){
         if (!ran) {
@@ -432,13 +440,13 @@ original commented source there. */
           mat4.multiply(currentRot, rotation, rotation);
           currentRot = mat4.identity();
         }
-        x5$.style.cursor = 'pointer';
-        x5$.removeEventListener('mousemove', rotate);
-        x5$.removeEventListener('mouseup', stop);
-        x5$.removeEventListener('mouseleave', stop);
+        x6$.style.cursor = 'pointer';
+        x6$.removeEventListener('mousemove', rotate);
+        x6$.removeEventListener('mouseup', stop);
+        x6$.removeEventListener('mouseleave', stop);
       };
     }.call(this, false));
-    x5$.addEventListener('mouseup', stop);
-    x5$.addEventListener('mouseleave', stop);
+    x6$.addEventListener('mouseup', stop);
+    x6$.addEventListener('mouseleave', stop);
   });
 }).call(this);
