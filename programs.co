@@ -1,0 +1,322 @@
+# Geoid GLSL programs
+# Author: Steven Ruppert
+
+# this comment appears in the compiled source:
+/* This file (programs.js) is compiled from programs.co. Please view the
+original commented source there. */
+
+"use strict"
+
+programs = {}
+
+export load = (it, ...args) -> programs[it].apply null, args
+
+plain-quad-vertex =  """
+  precision mediump float;
+
+  attribute vec2 vertexCoord;
+  attribute vec2 texCoord;
+
+  varying vec2 tex;
+
+  void main() {
+    tex = texCoord;
+    gl_Position = vec4(vertexCoord.xy, 1., 1);
+  }
+"""
+
+programs <<<
+  globe: shader-program do
+    vertex: """
+      precision mediump float;
+
+      attribute vec3 modelCoord;
+      attribute vec2 texCoord;
+
+      varying vec2 tex;
+
+      uniform mat4 ModelViewMatrix;
+      uniform mat4 ProjectionMatrix;
+
+      void main() {
+        tex = texCoord;
+
+        vec4 WorldCoord = ModelViewMatrix * vec4(modelCoord,1.0);
+
+        gl_Position = ProjectionMatrix * WorldCoord;
+      }"""
+    fragment: """
+      precision mediump float;
+
+      uniform sampler2D texture;
+
+      varying vec2 tex; // coords
+
+      uniform sampler2D oceanCurrent;
+      uniform sampler2D earthTexture;
+
+      bool isWater(vec2 coords) {
+        vec3 val = texture2D(oceanCurrent, coords).xyz;
+        return val.z == 1.0;
+      }
+
+      // transform packed texture field
+      vec2 fieldAt(vec2 coords) {
+        vec3 val = texture2D(oceanCurrent, coords).xyz;
+        return vec2(val.x - 0.5, val.y - 0.5);
+      }
+
+      // tweak variables for masking
+      uniform float m;
+      uniform float n;
+
+      uniform bool mask;
+
+      // tweak contrast stretch
+      uniform float minVal;
+      uniform float maxVal;
+
+      void main() {
+        if (isWater(tex)) {
+          vec4 pixel = texture2D(texture, tex);
+
+          // stretch contrast
+          float range = maxVal - minVal;
+          vec3 normalized = pixel.rgb - vec3(minVal, minVal, minVal);
+          pixel.rgb = clamp(normalized / range, vec3(0.,0.,0.), vec3(1.,1.,1.));
+
+          float magnitude = length(fieldAt(tex));
+
+          // not in paper, but in 2002 e/l texture advection:
+          // masking by magnitude
+          vec4 alpha = vec4(1., 1., 1., 1.);
+          if (mask) {
+            float ratio = min(magnitude / 0.5, 1.);
+            alpha = (1. - pow(1. - ratio, m)) * (1. - pow(1. - pixel, vec4(n)));
+          }
+
+          gl_FragColor = pixel * alpha;
+          gl_FragColor.b = gl_FragColor.b / 0.8 + 0.2;
+        } else {
+          gl_FragColor = texture2D(earthTexture, tex);
+        }
+      }"""
+    uniforms:
+      mask:
+        \1i true
+      m:
+        \1f 10
+      n:
+        \1f 3
+      minVal:
+        \1f 0.4
+      maxVal:
+        \1f 0.6
+  noise-transport: shader-program do
+    vertex: plain-quad-vertex
+    fragment: """
+      precision mediump float;
+
+      uniform sampler2D field;
+      uniform sampler2D noise;
+
+      varying vec2 tex;
+
+      uniform vec2 randomOffset;
+
+      // transform packed texture field
+      vec2 fieldAt(vec2 coords) {
+        vec3 val = texture2D(field, coords).xyz;
+        return vec2(val.x - 0.5, val.y - 0.5);
+      }
+
+      bool isWater(vec2 coords) {
+        vec3 val = texture2D(field, coords).xyz;
+        return val.z == 1.0;
+      }
+
+      //vec2 size = vec2(1024., 512.);
+
+      void main() {
+        if (isWater(tex)) {
+          vec2 currentPosition = tex + randomOffset;
+
+          // so, the paper says to advect the noise along the field, but since
+          // it's random anyway, I don't get why they bother...
+          /*
+          vec2 pos = currentPosition;
+          float h = 0.125;
+          vec2 field = fieldAt(pos);
+          for(int i = 0; i < 35; ++i) {
+            pos = pos - field * h / size;
+            field = fieldAt(pos);
+          }
+          */
+
+          //gl_FragColor = texture2D(noise, pos);
+          gl_FragColor = texture2D(noise, currentPosition);
+        } else {
+          gl_FragColor = texture2D(noise, tex);
+        }
+      }
+    """
+  orthogonal-lic: shader-program do
+    vertex: plain-quad-vertex
+    fragment: (stepsForwards, stepsBackwards) -> """
+      precision mediump float;
+
+      uniform sampler2D oceanCurrent;
+      uniform sampler2D transportedNoise;
+
+      varying vec2 tex;
+
+      uniform bool useOrthogonal;
+
+      // transform packed texture field
+      vec2 orthogonalFieldAt(vec2 coords) {
+        vec3 val = texture2D(oceanCurrent, coords).xyz;
+        if (useOrthogonal) {
+          return vec2(-(val.y - 0.5), val.x - 0.5);
+        } else {
+          return vec2((val.x - 0.5), val.y - 0.5);
+        }
+      }
+
+      bool isWater(vec2 coords) {
+        vec3 val = texture2D(oceanCurrent, coords).xyz;
+        return val.z == 1.0;
+      }
+
+      uniform vec2 size;
+      uniform float h;
+
+      // loops have to be unrolled so use global state and recompile instead
+      // TODO better way to do this
+      const int stepsBackwards = #stepsBackwards;
+      const int stepsForwards = #stepsForwards;
+
+      void main() {
+        if (isWater(tex)) {
+          // LIC backwards and forwards
+          vec3 pixel = vec3(0.0, 0.0, 0.0);
+          vec2 pos = tex;
+
+          vec2 field = orthogonalFieldAt(pos);
+          for(int i = 0; i < stepsBackwards; ++i) {
+            pixel = pixel + texture2D(transportedNoise, pos).rgb;
+            pos = pos - field * h / size;
+            field = orthogonalFieldAt(pos);
+          }
+          pos = tex;
+          field = orthogonalFieldAt(pos);
+          for(int i = 0; i < stepsForwards; ++i) {
+            pixel = pixel + texture2D(transportedNoise, pos).rgb;
+            pos = pos + field * h / size;
+            field = orthogonalFieldAt(pos);
+          }
+
+          // average
+          pixel = pixel / #{stepsForwards + stepsBackwards}.0;
+
+          gl_FragColor = vec4(pixel, 1.0);
+        } else {
+          gl_FragColor = texture2D(transportedNoise, tex);
+        }
+      }
+    """
+    uniforms:
+      size:
+        \2f 1024 512
+      h:
+        \1f 0.75
+      useOrthogonal:
+        \1i true
+
+  advection: shader-program do
+    vertex: plain-quad-vertex
+    fragment: (steps) -> """
+      precision mediump float;
+
+      uniform sampler2D oceanCurrent;
+      uniform sampler2D previousTexture;
+
+      // when out of bounds, pull new noise
+      uniform sampler2D noise;
+
+      uniform vec2 randomOffset;
+
+      varying vec2 tex;
+
+      // transform packed texture field
+      vec2 fieldAt(vec2 coords) {
+        vec3 val = texture2D(oceanCurrent, coords).xyz;
+        return vec2(val.x - 0.5, val.y - 0.5);
+      }
+
+      bool isWater(vec2 coords) {
+        vec3 val = texture2D(oceanCurrent, coords).xyz;
+        return val.z == 1.0;
+      }
+
+      vec2 size = vec2(1024., 512.);
+
+      uniform float h;
+
+      void main() {
+        if (isWater(tex)) {
+          vec2 currentPosition = tex;
+
+          vec2 pos = tex;
+          vec2 field = fieldAt(pos);
+          for(int i = 0; i < #steps; ++i) {
+            pos = pos - field * h / size;
+            field = fieldAt(pos);
+          }
+          gl_FragColor = texture2D(previousTexture, pos);
+        } else {
+          // inject noise into the system at boundaries, otherwise there are
+          // streak artifacts since the noise isn't transported.
+          gl_FragColor = texture2D(previousTexture, tex + randomOffset);
+        }
+      }
+    """
+    uniforms:
+      h:
+        \1f 0.125
+  blend: shader-program do
+    vertex: plain-quad-vertex
+    fragment: """
+      precision mediump float;
+
+      uniform sampler2D orthogonalLIC;
+      uniform sampler2D advected;
+
+      uniform sampler2D oceanCurrent;
+
+      bool isWater(vec2 coords) {
+        vec3 val = texture2D(oceanCurrent, coords).xyz;
+        return val.z != 0.0;
+      }
+
+      // transform packed texture field
+      vec2 fieldAt(vec2 coords) {
+        vec3 val = texture2D(oceanCurrent, coords).xyz;
+        return vec2(val.x - 0.5, val.y - 0.5);
+      }
+
+      varying vec2 tex;
+
+      uniform float ratio;
+
+      void main() {
+        vec4 pixel   = mix(texture2D(orthogonalLIC, tex)
+                          ,texture2D(advected     , tex)
+                          ,ratio);
+
+        gl_FragColor = pixel;
+      }
+    """
+    uniforms:
+      ratio:
+        \1f 0.85
+

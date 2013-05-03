@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang=en>
+<meta charset=utf-8>
+<title>Geoid, webgl edition</title>
+
+<style>
+  input:not(:disabled), button, label { cursor: pointer }
+  #canvas {
+    cursor: pointer;
+    position: absolute;
+    top: 0;
+  }
+  #texture { list-style-type: none; padding-left: 0 }
+  body { background: black; color: #ccc; }
+  #controls {
+    position: absolute;
+    left: 0;
+    top: 0;
+    padding: 1em;
+    opacity: 0.1;
+  }
+  #controls:hover {
+    background: rgba(0, 0, 0, 0.7);
+    opacity: 1;
+  }
+  h1 {
+    font-size: 14pt;
+    margin: .5em 0;
+  }
+  #controls h2 {
+    font-size: 12pt;
+    margin: .5em 0;
+  }
+</style>
+
+<div>
+  <canvas id=canvas width=1024 height=1024>
+    Oh gosh, your browser doesn't support canvas ;_;
+  </canvas>
+</div>
+
+<div id=controls>
+  <h1>Geoid</h1>
+  <div>
+    <button id=zoom-in  type=button>Zoom in</button><br>
+    <button id=zoom-out type=button>Zoom out</button><br>
+  </div>
+  <section>
+    <h2>Velocity Masking</h2>
+    <div><label><input type=checkbox id=enable-mask checked> Enabled</label></div>
+    <div><label>M: <input type=range min=0.01 max=50 step=0.05 id=m></label></div>
+    <div><label>N: <input type=range min=0.01 max=30 step=0.01 id=n></label></div>
+  </section>
+  <section>
+    <h2>LIC</h2>
+    <div>Type:
+      <label><input type=radio name=lic-type id=orthogonal checked>Orthogonal</label>
+      <label><input type=radio name=lic-type id=parallel>Parallel</label>
+    </div>
+    <div><label>Step Size: <input type=range min=0.01 max=2 step=0.01 id=lic-h></label></div>
+    <div><label>Backwards: <input type=range min=1 max=30 step=1 id=backwards></label></div>
+    <div><label>Forwards: <input type=range min=1 max=30 step=1 id=forwards></label></div>
+  </section>
+  <section>
+    <h2>Advection</h2>
+    <div><label>Step Size: <input type=range min=0.01 max=2 step=0.01 id=advection-h></label></div>
+    <div><label>Steps: <input type=range min=1 max=30 step=1 id=advection-steps></label></div>
+  </section>
+  <section>
+    <h2>Blending</h2>
+    <div><label>Ratio: <input type=range min=0.00 max=1 step=0.01 id=blend-ratio></label></div>
+  </section>
+  <section>
+    <h2>Stretch Contrast</h2>
+    <div><label><input type=checkbox id=symmetric checked> Symmetric</label></div>
+    <div><label>Min: <input type=range min=0.00 max=1 step=0.01 id=min-value></label></div>
+    <div><label>Max: <input type=range min=0.00 max=1 step=0.01 id=max-value></label></div>
+  </section>
+  <section>
+    <h2>Land</h2>
+    <label><input type=radio name=texture id=day checked>Day</label>
+    <label><input type=radio name=texture id=night>Night</label>
+  </section>
+  <div>
+    <button id=reset type=button>Reset All</button><br>
+  </div>
+  <footer>
+    <small>
+      Written in 2013 by Steven Ruppert.
+    </small>
+  </footer>
+</div>
+
+<script src=webgl-debug.js></script>
+<script src=gl-matrix-min.js></script>
+<script src=wheel-polyfill.js></script>
+<script src=html5slider.js></script>
+<script src=utils.js></script>
+<script src=programs.js></script>
+<script src=geoid.js></script>
