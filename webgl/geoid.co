@@ -65,25 +65,78 @@ distance = get \distance or 1 / Math.tan(radians(fov) / 2)
   $(\m)value = 10
   $(\n)value = 3
 
+  $(\blend-ratio)value =  0.95
+
+  $(\forwards)value = 10
+  $(\backwards)value = 10
+  $(\advection-h)value = 0.5
+  $(\advection-steps)value = 10
+
+  min-val.value = 0.3
+  max-val.value = 0.7
+
 window.addEventListener \unload !->
   set \rotation arr rotation
   set \current-rot arr current-rot
   set \distance distance
   set \fov fov
 
+  # XXX polyfilled range inputs don't persist themselves
   set \m (parseFloat $(\m)value) || 10
   set \n (parseFloat $(\n)value) || 10
+
   set \blend-ratio (parseFloat $(\blend-ratio)value) || 0.85
 
-$(\m)value = get \m
-$(\n)value = get \n
+  set \lic-h $(\lic-h).value
 
-$(\blend-ratio)value = get \blend-ratio
+  set \forwards $(\forwards).value
+  set \backwards $(\backwards).value
+
+  set \advection-h $(\advection-h)value
+  set \advection-steps $(\advection-steps)value
+
+  set \min-val min-val.value
+  set \max-val max-val.value
+
+$(\m)value = get \m or 10
+$(\n)value = get \n or 3
+
+$(\blend-ratio)value = get \blend-ratio or 0.95
+
+$(\forwards)value = get \forwards or 10
+$(\backwards)value = get \backwards or 10
+$(\advection-h)value = get \advection-h or 0.5
+$(\advection-steps)value = get \advection-steps or 10
 
 $ \reset .addEventListener \click reset-stage
 
 $ \zoom-in  .addEventListener \click !-> fov := clamp fov - 1, 1, 100
 $ \zoom-out .addEventListener \click !-> fov := clamp fov + 1, 1, 100
+
+# keep min/maxval symmetric
+symmetric = $ \symmetric
+min-val = $ \min-value
+  &value = parseFloat get \min-val
+max-val = $ \max-value
+  &value = parseFloat get \max-val
+
+reclamp = !->
+  console.log min-val.value
+  console.log max-val.value
+  min-val.value = Math.min 0.5 parseFloat min-val.value
+  max-val.value = Math.max 0.5 parseFloat max-val.value
+  console.log min-val.value
+  console.log max-val.value
+
+reclamp! if symmetric.checked
+symmetric.addEventListener \change !-> reclamp! if @checked
+
+min-val.addEventListener \input !->
+  if symmetric.checked
+    max-val.value = 1 - parseFloat @value
+max-val.addEventListener \input !->
+  if symmetric.checked
+    min-val.value = 1 - parseFloat @value
 
 addWheelListener document.body, !->
   fov := clamp fov + it.deltaY / Math.abs(it.deltaY), 1, 100
@@ -396,6 +449,12 @@ export draw = !->
 
   gl.getUniformLocation p.globe, \n
     gl.uniform1f &, (parseFloat $(\n)value) || 3
+
+  gl.getUniformLocation p.globe, \minVal
+    gl.uniform1f &, parseFloat $(\min-value)value || 0
+
+  gl.getUniformLocation p.globe, \maxVal
+    gl.uniform1f &, parseFloat $(\max-value)value || 1
 
   bind-buffer gl, p.globe, \modelCoord, buffers.modelCoord, 3
   bind-buffer gl, p.globe, \texCoord, buffers.texCoord, 2
