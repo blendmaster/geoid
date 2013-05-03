@@ -294,7 +294,7 @@ export draw = !->
   gl.getUniformLocation p.noise-transport, \texture
     gl.uniform1i &, 0
   
-  # use random offset of noise
+  # use random offset of noise to vary over time cheaply
   uniform gl, p.noise-transport, \randomOffset \2f Math.random!, Math.random!
 
   gl.activeTexture gl.TEXTURE1
@@ -360,6 +360,14 @@ export draw = !->
 
   gl.getUniformLocation p.advection, \h
     gl.uniform1f &, parseFloat($ \advection-h .value)
+  #
+  # use random offset of noise to vary over time cheaply
+  uniform gl, p.advection, \randomOffset \2f Math.random!, Math.random!
+
+  gl.activeTexture gl.TEXTURE2
+  gl.bindTexture gl.TEXTURE_2D, noise-tex
+  gl.getUniformLocation p.advection, \noise
+    gl.uniform1i &, 2
 
   bind-buffer gl, p.advection, \vertexCoord, buffers.basic-quad, 2
   bind-buffer gl, p.advection, \texCoord, buffers.basic-quad-tex, 2

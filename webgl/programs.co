@@ -57,7 +57,7 @@ programs <<<
 
       bool isWater(vec2 coords) {
         vec3 val = texture2D(oceanCurrent, coords).xyz;
-        return val.z != 0.0;
+        return val.z == 1.0;
       }
 
       // transform packed texture field
@@ -132,7 +132,7 @@ programs <<<
 
       bool isWater(vec2 coords) {
         vec3 val = texture2D(field, coords).xyz;
-        return val.z != 0.0;
+        return val.z == 1.0;
       }
 
       //vec2 size = vec2(1024., 512.);
@@ -184,7 +184,7 @@ programs <<<
 
       bool isWater(vec2 coords) {
         vec3 val = texture2D(oceanCurrent, coords).xyz;
-        return val.z != 0.0;
+        return val.z == 1.0;
       }
 
       uniform vec2 size;
@@ -240,6 +240,11 @@ programs <<<
       uniform sampler2D oceanCurrent;
       uniform sampler2D previousTexture;
 
+      // when out of bounds, pull new noise
+      uniform sampler2D noise;
+
+      uniform vec2 randomOffset;
+
       varying vec2 tex;
 
       // transform packed texture field
@@ -250,7 +255,7 @@ programs <<<
 
       bool isWater(vec2 coords) {
         vec3 val = texture2D(oceanCurrent, coords).xyz;
-        return val.z != 0.0;
+        return val.z == 1.0;
       }
 
       vec2 size = vec2(1024., 512.);
@@ -267,10 +272,11 @@ programs <<<
             pos = pos - field * h / size;
             field = fieldAt(pos);
           }
-
-          gl_FragColor = vec4(texture2D(previousTexture, pos));
+          gl_FragColor = texture2D(previousTexture, pos);
         } else {
-          gl_FragColor = texture2D(previousTexture, tex);
+          // inject noise into the system at boundaries, otherwise there are
+          // streak artifacts since the noise isn't transported.
+          gl_FragColor = texture2D(previousTexture, tex + randomOffset);
         }
       }
     """
