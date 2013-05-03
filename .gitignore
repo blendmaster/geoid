@@ -18,6 +18,6 @@ local.properties
 # Eclipse project files
 .classpath
 .project
-/obj
+/android/obj
 *.raw
 *.pyc
