@@ -116,9 +116,9 @@ $ \zoom-out .addEventListener \click !-> fov := clamp fov + 1, 1, 100
 # keep min/maxval symmetric
 symmetric = $ \symmetric
 min-val = $ \min-value
-  &value = parseFloat get \min-val
+  &value = parseFloat get \min-val or 0.3
 max-val = $ \max-value
-  &value = parseFloat get \max-val
+  &value = parseFloat get \max-val or 0.7
 
 reclamp = !->
   min-val.value = Math.min 0.5 parseFloat min-val.value

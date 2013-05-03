@@ -97,9 +97,9 @@ original commented source there. */
   });
   symmetric = $('symmetric');
   x1$ = minVal = $('min-value');
-  x1$.value = parseFloat(get('min-val'));
+  x1$.value = parseFloat(get('min-val')) || 0.3;
   x2$ = maxVal = $('max-value');
-  x2$.value = parseFloat(get('max-val'));
+  x2$.value = parseFloat(get('max-val')) || 0.7;
   reclamp = function(){
     minVal.value = Math.min(0.5, parseFloat(minVal.value));
     maxVal.value = Math.max(0.5, parseFloat(maxVal.value));
