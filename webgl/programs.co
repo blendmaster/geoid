@@ -25,6 +25,107 @@ plain-quad-vertex =  """
   }
 """
 
+ocean-current-comon = """
+  // we need all three to be able to interpolate between months.
+  // well, we technically don't need 3, but having the previous set
+  // makes it easier to look backwards in time.
+  uniform sampler2D prevOcean;
+  uniform sampler2D curOcean;
+  uniform sampler2D nextOccean;
+
+  // unpack current timestamped field from packed texture
+  // see the `octave` folder for details
+  //
+  // coords is in homogenous [0,1] coords, and will be wrapped.
+  // time is in months relative to the start of curOcean.
+  //
+  // Vector fields are essentially trilinearly interpolated,
+  // in 2D for the current timestamp automatically by openGL,
+  // and through time by this function. Due to the log-space packing of
+  // the fields, openGL's interpolation isn't actually linear, but it's close
+  // enough.
+  vec2 fieldAt(vec2 coords, float time) {
+    // wrap coords to [0, 1]
+    coords = coords - floor(coords);
+
+    float monthOffset = fract(time);
+    int thisMonth = floor(time);
+    int nextMonth = thisMonth + 1;
+
+    vec2 startVal;
+    vec2 endVal;
+    if (thisMonth == -1) {
+      startVal = unpckVals(coords, 15., prevOcean);
+      endVal   = unpckVals(coords, 0, curOcean);
+    } else if(thisMonth == 15) {
+      startVal = unpckVals(coords, 15, curOcean);
+      endVal   = unpckVals(coords, 0, nextOccean);
+    } else {
+      startVal = unpckVals(coords, thisMonth, curOcean);
+      endVal   = unpckVals(coords, nextMonth, curOcean);
+    }
+
+    retun mix(startVal, endVal, monthOffset);
+  }
+
+  // the vector field value from a specific month in a set
+  // unpacks the log-space numbers from RGBA channels.
+  // layout:
+  //
+  // 0,1   2,3
+  // 4,5   6,7
+  // 8,9   10,11
+  // 12,13 14,15
+  vec2 firstField(vec2 coords, int month, sampler2D fieldSet) {
+    vec2 start = vec2(
+      // left side or right side, i.e. 0 or 0.5
+      mod(floor(month / 2.), 2.) / 2.,
+      // which layer, 0, 0.25, 0.5, 0.75
+      floor(month / 4.) / 4.);
+
+    float actualCoords = start + coords / vec2(2., 4.);
+
+    if (mod(month, 2) == 0) {
+      return unlog(texture2D(fieldSet, actualCoords).rg);
+    } else {
+      return unlog(texture2D(fieldSet, actualCoords).ba);
+    }
+  }
+
+  // log space unpacking.
+  // Negative numbers were packed backards into [0, 127].
+  // Positive numbers were packed normally into [128, 255];
+  //
+  // The backwards packing ws done so openGL's billinear interp around 0.5 wouldn't
+  // cause large negative numbers to suddenly change into tiny positive numbers if
+  // the two real values were e.g. 0.49 and 0.51.
+  vec2 unlog(vec2 val) {
+    return vec2(unlogComponent(val.x), unlogComponent(val.y));
+  }
+
+  float unlogComponent(float val) {
+    if (val < 0.5) {
+      // regularly in space [0, 0.5] so transform to [0, 1], then
+      // flip into log space [-10, 0];
+      return exp(val * 2 * -10.);
+    } else {
+      // regularly in space [0.5, 1.0] so transform to [0, 0.5], then
+      // to [0, 10], then subtract to log space [-10, 0];
+      return exp((val - 0.5) * 10. - 10.);
+    }
+  }
+"""
+
+isWater = """
+  // a simple boolean lookup to deal with edge effects around continents.
+  uniform texture2D water;
+
+  bool isWater(vec2 coords) {
+    // no fancy unpacking or wrapping, thankfully
+    return texture2D(water, coords) == 1;
+  }
+"""
+
 programs <<<
   globe: shader-program do
     vertex: """

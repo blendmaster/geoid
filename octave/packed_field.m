@@ -44,12 +44,14 @@ function packed = packed_field(values)
   pos = scaled_around_zero(scaled_around_zero > 0);
   % to [negative, 0]
   posl = log(pos);
-  % to [0, 127]
-  pospacked = (posl + 10) / 10 * 128;
+  % to [128, 255]
+  pospacked = (posl + 10) / 10 * 128 + 128;
 
   neg = scaled_around_zero(scaled_around_zero < 0);
   negl = log(-neg);
-  % to [128, 255]
+  % to [0, 127], reversed, so small negative numbers will be close to 0.5
+  % along with small positive numbers. That way billinear interpolation won't
+  % jump from large negative to small positive and vice versa arund 0.5.
   negpacked = (negl + 10) / 10 * 128 + 128;
 
   % put it all together
