@@ -2,7 +2,7 @@
 original commented source there. */
 (function(){
   "use strict";
-  var canvas, ref$, width, height, k, ref1$, v, x0$, arr, rotation, e, currentRot, fov, distance, symmetric, x1$, minVal, ref2$, x2$, maxVal, reclamp, ctx, buffers, latBands, lonBands, noiseTex, noiseTransport, orthogonalLic, advection, blend, setupBuffers, numTriangles, p, frame, draw, oceanField, landMask, earthTexture, nightTexture, pointUnder, x3$, out$ = typeof exports != 'undefined' && exports || this;
+  var canvas, ref$, width, height, k, ref1$, v, x0$, arr, rotation, e, currentRot, fov, distance, symmetric, x1$, minVal, ref2$, x2$, maxVal, reclamp, ctx, buffers, latBands, lonBands, noiseTex, noiseTransport, orthogonalLic, advection, blend, setupBuffers, numTriangles, p, frame, initial, draw, oceanField, landMask, earthTexture, nightTexture, pointUnder, x3$, out$ = typeof exports != 'undefined' && exports || this;
   canvas = document.getElementById('canvas');
   ref$ = document.documentElement, canvas.width = ref$.clientWidth, canvas.height = ref$.clientHeight;
   width = canvas.width, height = canvas.height;
@@ -264,6 +264,7 @@ original commented source there. */
     gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.basicQuadIndices);
     gl.drawElements(TRIANGLES, 6, UNSIGNED_SHORT, 0);
   }
+  initial = true;
   out$.draw = draw = function(){
     var x3$, x4$, x5$, x6$, x7$, rot, modelView, x8$, x9$, x10$, x11$, x12$;
     loadPlainQuadProgram(p.noiseTransport, noiseTransport.framebuffer);
@@ -283,7 +284,9 @@ original commented source there. */
     loadPlainQuadProgram(p.advection, advection.framebuffer);
     loadOceanCurrentCommon(p.advection);
     loadIsWater(p.advection);
-    loadTexture(p.advection, blend.texture, 'previousTexture', 4);
+    loadTexture(p.advection, initial
+      ? noiseTex
+      : blend.texture, 'previousTexture', 4);
     x5$ = gl.getUniformLocation(p.advection, 'h');
     gl.uniform1f(x5$, parseFloat($('advection-h').value));
     uniform(gl, p.advection, 'randomOffset', '2f', Math.random(), Math.random());
@@ -330,6 +333,7 @@ original commented source there. */
     bindBuffer(gl, p.globe, 'texCoord', buffers.texCoord, 2);
     gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.idx);
     gl.drawElements(TRIANGLES, numTriangles, UNSIGNED_SHORT, 0);
+    initial = false;
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(draw);
   };

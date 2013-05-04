@@ -320,6 +320,9 @@ $ \advection-steps .addEventListener \change !->
 # the requestAnimationFrame id, so we don't get more than one
 var frame
 
+# flag to seed blending
+initial = true
+
 export draw = !->
   ##################################################################
   # first: random noise injection and initial advection
@@ -360,7 +363,9 @@ export draw = !->
   load-ocean-current-common p.advection
   load-isWater p.advection
 
-  load-texture p.advection, blend.texture, \previousTexture 4
+  load-texture p.advection,
+    if initial then noise-tex else blend.texture
+    \previousTexture 4
 
   gl.getUniformLocation p.advection, \h
     gl.uniform1f &, parseFloat($ \advection-h .value)
@@ -438,6 +443,8 @@ export draw = !->
 
   gl.bindBuffer ELEMENT_ARRAY_BUFFER, buffers.idx
   gl.drawElements TRIANGLES, num-triangles, UNSIGNED_SHORT, 0
+
+  initial := false
 
   # redraw later
   cancelAnimationFrame frame
