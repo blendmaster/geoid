@@ -26,6 +26,14 @@ plain-quad-vertex =  """
 """
 
 ocean-current-common = """
+  // a simple boolean lookup to deal with edge effects around continents.
+  uniform sampler2D landMask;
+
+  bool isWater(vec2 coords) {
+    // no fancy unpacking or wrapping, thankfully
+    return texture2D(landMask, coords).r > 0.;
+  }
+
   // we need all three to be able to interpolate between months.
   // well, we technically don't need 3, but having the previous set
   // makes it easier to look backwards in time.
@@ -33,101 +41,54 @@ ocean-current-common = """
   uniform sampler2D curOcean;
   uniform sampler2D nextOccean;
 
-  // log space unpacking.
-  // Negative numbers were packed backards into [0, 127].
-  // Positive numbers were packed normally into [128, 255];
-  //
-  // The backwards packing ws done so openGL's billinear interp around 0.5 wouldn't
-  // cause large negative numbers to suddenly change into tiny positive numbers if
-  // the two real values were e.g. 0.49 and 0.51.
-  float unlogComponent(float val) {
-    if (val < 0.5) {
-      // regularly in space [0, 0.5] so transform to [0, 1], then
-      // flip into log space [-10, 0], then make negative
-      return -exp(val * -20.);
-    } else {
-      // regularly in space [0.5, 1.0] so transform to [0, 0.5], then
-      // to [0, 10], then subtract to log space [-10, 0];
-      return exp((val - 0.5) * 10. - 10.);
-    }
-  }
-  vec2 unlog(vec2 val) {
+  // vector values were normalized to [-1, 1] then transposed to [0, 1].
+  vec2 unpack(vec2 val) {
     return val - vec2(0.5, 0.5);
-    //return vec2(unlogComponent(val.x), unlogComponent(val.y));
   }
 
-  // the vector field value from a specific month in a set
-  // unpacks the log-space numbers from RGBA channels.
-  // layout:
-  //
-  // 0,1   2,3
-  // 4,5   6,7
-  // 8,9   10,11
-  // 12,13 14,15
+  // the vector field value according to month
+  // the first is RG, the second is BA
   vec2 unpackVal(vec2 coords, float month, sampler2D fieldSet) {
-    vec2 start = vec2(
-      // left side or right side, i.e. 0 or 0.5
-      mod(floor(month / 2.), 2.) / 2.,
-      // which layer, 0, 0.25, 0.5, 0.75
-      0.75 - floor(month / 4.) / 4.
-    );
-
-    vec2 actualCoords = start + coords / vec2(2., 4.);
-
-    if (mod(month, 2.) == 0.) {
-      return unlog(texture2D(fieldSet, actualCoords).rg);
+    if (month == 0.) {
+      return unpack(texture2D(fieldSet, coords).rg);
     } else {
-      return unlog(texture2D(fieldSet, actualCoords).ba);
+      return unpack(texture2D(fieldSet, coords).ba);
     }
   }
-  // unpack current timestamped field from packed texture
-  // see the `octave` folder for details
-  //
-  // coords is in homogenous [0,1] coords, and will be wrapped.
-  // time is in months relative to the start of curOcean.
+
+  // unpack current timestamped field from 2-packed texture
+  // see the `octave` folder for details.
   //
   // Vector fields are essentially trilinearly interpolated,
   // in 2D for the current timestamp automatically by openGL,
-  // and through time by this function. Due to the log-space packing of
-  // the fields, openGL's interpolation isn't actually linear, but it's close
-  // enough.
+  // and through time by this function.
   vec2 fieldAt(vec2 coords, float time) {
-    // wrap coords to [0, 1]
-    coords = coords - floor(coords);
+    if (isWater(coords)) {
+      float monthOffset = fract(time);
+      float thisMonth = floor(time);
+      float nextMonth = thisMonth + 1.;
 
-    float monthOffset = fract(time);
-    float thisMonth = floor(time);
-    float nextMonth = thisMonth + 1.;
-
-    vec2 startVal;
-    vec2 endVal;
-    if (thisMonth == -1.) {
-      startVal = unpackVal(coords, 15., prevOcean);
-      endVal   = unpackVal(coords, 0., curOcean);
-    } else {
-      if(thisMonth == 15.) {
-        startVal = unpackVal(coords, 15., curOcean);
-        endVal   = unpackVal(coords, 0., nextOccean);
+      vec2 startVal;
+      vec2 endVal;
+      if (thisMonth == -1.) {
+        startVal = unpackVal(coords, 1., prevOcean);
+        endVal   = unpackVal(coords, 0., curOcean);
       } else {
-        startVal = unpackVal(coords, thisMonth, curOcean);
-        endVal   = unpackVal(coords, nextMonth, curOcean);
+        if(thisMonth == 1.) {
+          startVal = unpackVal(coords, 1., curOcean);
+          endVal   = unpackVal(coords, 0., nextOccean);
+        } else {
+          startVal = unpackVal(coords, thisMonth, curOcean);
+          endVal   = unpackVal(coords, nextMonth, curOcean);
+        }
       }
+
+      return mix(startVal, endVal, monthOffset);
+    } else {
+      return vec2(0., 0.);
     }
-
-    return mix(startVal, endVal, monthOffset);
   }
 """
-
-isWater = """
-  // a simple boolean lookup to deal with edge effects around continents.
-  uniform sampler2D landMask;
-
-  bool isWater(vec2 coords) {
-    // no fancy unpacking or wrapping, thankfully
-    return texture2D(landMask, coords).r != 0.;
-  }
-"""
-
 programs <<<
   globe: shader-program do
     vertex: """
@@ -169,38 +130,35 @@ programs <<<
 
       #ocean-current-common
 
-      #isWater
-      
       uniform float time;
 
       void main() {
-        vec4 pixel = texture2D(texture, tex);
+        if (texture2D(landMask, tex).r == 1.0) {
+          vec4 pixel = texture2D(texture, tex);
 
-        vec4 landTexture = texture2D(earthTexture, tex);
+          // stretch contrast
+          float range = maxVal - minVal;
+          vec3 normalized = pixel.rgb - vec3(minVal, minVal, minVal);
+          pixel.rgb = clamp(normalized / range, vec3(0.,0.,0.), vec3(1.,1.,1.));
 
-        // stretch contrast
-        float range = maxVal - minVal;
-        vec3 normalized = pixel.rgb - vec3(minVal, minVal, minVal);
-        pixel.rgb = clamp(normalized / range, vec3(0.,0.,0.), vec3(1.,1.,1.));
+          float magnitude = length(fieldAt(tex, time));
 
-        float magnitude = length(fieldAt(tex, time));
+          // not in paper, but in 2002 e/l texture advection:
+          // masking by magnitude
+          vec4 alpha = vec4(1., 1., 1., 1.);
+          if (mask) {
+            float ratio = min(magnitude / 0.5, 1.);
+            alpha = (1. - pow(1. - ratio, m)) * (1. - pow(1. - pixel, vec4(n)));
+          }
 
-        // not in paper, but in 2002 e/l texture advection:
-        // masking by magnitude
-        vec4 alpha = vec4(1., 1., 1., 1.);
-        if (mask) {
-          float ratio = min(magnitude / 0.5, 1.);
-          alpha = (1. - pow(1. - ratio, m)) * (1. - pow(1. - pixel, vec4(n)));
+          vec4 masked = pixel * alpha;
+
+          // slight blue coloration for visual appeal
+          masked.b = masked.b / 0.9 + 0.1;
+          gl_FragColor = masked;
+        } else {
+          gl_FragColor = texture2D(earthTexture, tex);
         }
-
-        vec4 masked = pixel * alpha;
-
-        // slight blue coloration for visual appeal
-        masked.b = masked.b / 0.9 + 0.1;
-
-        // mix with earth texture, which is 1 for water and 0 for land
-        vec4 landM = texture2D(landMask, tex);
-        gl_FragColor = mix(landTexture, masked, landM);
       }"""
     uniforms:
       mask:
@@ -226,8 +184,7 @@ programs <<<
 
       uniform vec2 randomOffset;
       
-
-      #isWater
+      #ocean-current-common
 
       void main() {
         if (isWater(tex)) {
@@ -248,7 +205,7 @@ programs <<<
           //gl_FragColor = texture2D(noise, pos);
           gl_FragColor = texture2D(noise, currentPosition);
         } else {
-          gl_FragColor = texture2D(noise, tex);
+          gl_FragColor = vec4(0.,0.,0.,1.);
         }
       }
     """
@@ -275,8 +232,6 @@ programs <<<
       }
 
       uniform float time;
-
-      #isWater
 
       uniform vec2 size;
       uniform float h;
@@ -333,8 +288,6 @@ programs <<<
       uniform sampler2D previousTexture;
 
       #ocean-current-common
-
-      #isWater
 
       // when out of bounds, pull new noise
       uniform sampler2D noise;

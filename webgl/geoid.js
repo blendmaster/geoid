@@ -2,7 +2,7 @@
 original commented source there. */
 (function(){
   "use strict";
-  var canvas, ref$, width, height, k, ref1$, v, x0$, arr, rotation, e, currentRot, fov, distance, symmetric, x1$, minVal, ref2$, x2$, maxVal, reclamp, ctx, buffers, latBands, lonBands, noiseTex, noiseTransport, orthogonalLic, advection, blend, setupBuffers, numTriangles, p, frame, draw, curOcean, x3$, landMask, x4$, earthTexture, x5$, nightTexture, x6$, pointUnder, x7$, out$ = typeof exports != 'undefined' && exports || this;
+  var canvas, ref$, width, height, k, ref1$, v, x0$, arr, rotation, e, currentRot, fov, distance, symmetric, x1$, minVal, ref2$, x2$, maxVal, reclamp, ctx, buffers, latBands, lonBands, noiseTex, noiseTransport, orthogonalLic, advection, blend, setupBuffers, numTriangles, p, frame, draw, oceanField, landMask, earthTexture, nightTexture, pointUnder, x3$, out$ = typeof exports != 'undefined' && exports || this;
   canvas = document.getElementById('canvas');
   ref$ = document.documentElement, canvas.width = ref$.clientWidth, canvas.height = ref$.clientHeight;
   width = canvas.width, height = canvas.height;
@@ -247,7 +247,7 @@ original commented source there. */
   }
   function loadOceanCurrentCommon(program){
     var x3$, x4$, x5$;
-    loadTexture(program, curOcean, 'curOcean', 0);
+    loadTexture(program, oceanField[0], 'curOcean', 0);
     x3$ = gl.getUniformLocation(program, 'prevOcean');
     gl.uniform1i(x3$, 0);
     x4$ = gl.getUniformLocation(program, 'nextOcean');
@@ -335,51 +335,48 @@ original commented source there. */
   };
   window.requestAnimationFrame = window.mozRequestAnimationFrame || window.webkitRequestAnimationFrame;
   window.cancelAnimationFrame = window.mozCancelAnimationFrame || window.webkitCancelAnimationFrame;
-  curOcean = gl.createTexture();
-  x3$ = new Image;
-  x3$.onload = function(){
+  function setTexture(texture, data){
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.bindTexture(gl.TEXTURE_2D, curOcean);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, data);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
     gl.generateMipmap(gl.TEXTURE_2D);
+    return texture;
+  }
+  function loadImage(src, cb){
+    var x3$;
+    x3$ = new Image;
+    x3$.onload = cb;
+    x3$.src = src;
+  }
+  oceanField = [];
+  loadImage('packed16.png', function(){
+    var c, ref$, ctx, i$, ref1$, len$, y, j$, ref2$, len1$, x;
+    c = (ref$ = document.createElement('canvas'), ref$.width = this.width, ref$.height = this.height, ref$);
+    ctx = c.getContext('2d');
+    ctx.drawImage(this, 0, 0);
+    for (i$ = 0, len$ = (ref1$ = [0, 512, 1024, 1536]).length; i$ < len$; ++i$) {
+      y = ref1$[i$];
+      for (j$ = 0, len1$ = (ref2$ = [0, 1024]).length; j$ < len1$; ++j$) {
+        x = ref2$[j$];
+        oceanField.push(setTexture(gl.createTexture(), ctx.getImageData(x, y, 1024, 512)));
+      }
+    }
     draw();
-  };
-  x3$.src = 'packed16.png';
+  });
   landMask = gl.createTexture();
-  x4$ = new Image;
-  x4$.onload = function(){
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.bindTexture(gl.TEXTURE_2D, landMask);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
-    gl.generateMipmap(gl.TEXTURE_2D);
-  };
-  x4$.src = 'land-mask.png';
+  loadImage('land-mask.png', function(){
+    setTexture(landMask, this);
+  });
   earthTexture = gl.createTexture();
-  x5$ = new Image;
-  x5$.onload = function(){
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.bindTexture(gl.TEXTURE_2D, earthTexture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
-    gl.generateMipmap(gl.TEXTURE_2D);
-  };
-  x5$.src = 'blue-marble.jpg';
+  loadImage('blue-marble.jpg', function(){
+    setTexture(earthTexture, this);
+  });
   nightTexture = gl.createTexture();
-  x6$ = new Image;
-  x6$.onload = function(){
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.bindTexture(gl.TEXTURE_2D, nightTexture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
-    gl.generateMipmap(gl.TEXTURE_2D);
-  };
-  x6$.src = 'black-marble.jpg';
+  loadImage('black-marble.jpg', function(){
+    setTexture(nightTexture, this);
+  });
   setupBuffers();
   pointUnder = function(x, y){
     var ref$, left, top, det;
@@ -393,11 +390,11 @@ original commented source there. */
       return [x / Math.sqrt(x * x + y * y), y / Math.sqrt(x * x + y * y), 0];
     }
   };
-  x7$ = canvas;
-  x7$.addEventListener('mousedown', function(arg$){
+  x3$ = canvas;
+  x3$.addEventListener('mousedown', function(arg$){
     var i0, j0, p, rotate, stop;
     i0 = arg$.clientX, j0 = arg$.clientY;
-    x7$.style.cursor = 'move';
+    x3$.style.cursor = 'move';
     p = pointUnder(i0, j0);
     rotate = function(arg$){
       var i, j, q, cp, cq, angle, axis;
@@ -409,7 +406,7 @@ original commented source there. */
       axis = vec3.cross(cp, cq);
       currentRot = mat4.rotate(mat4.identity(), angle, axis);
     };
-    x7$.addEventListener('mousemove', rotate);
+    x3$.addEventListener('mousemove', rotate);
     stop = (function(ran){
       return function(){
         if (!ran) {
@@ -417,13 +414,13 @@ original commented source there. */
           mat4.multiply(currentRot, rotation, rotation);
           currentRot = mat4.identity();
         }
-        x7$.style.cursor = 'pointer';
-        x7$.removeEventListener('mousemove', rotate);
-        x7$.removeEventListener('mouseup', stop);
-        x7$.removeEventListener('mouseleave', stop);
+        x3$.style.cursor = 'pointer';
+        x3$.removeEventListener('mousemove', rotate);
+        x3$.removeEventListener('mouseup', stop);
+        x3$.removeEventListener('mouseleave', stop);
       };
     }.call(this, false));
-    x7$.addEventListener('mouseup', stop);
-    x7$.addEventListener('mouseleave', stop);
+    x3$.addEventListener('mouseup', stop);
+    x3$.addEventListener('mouseleave', stop);
   });
 }).call(this);

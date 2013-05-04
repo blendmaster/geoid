@@ -293,7 +293,7 @@ $ \advection-steps .addEventListener \change !->
   gl.clear COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT
 
 !function load-ocean-current-common program
-  load-texture program, cur-ocean, \curOcean 0
+  load-texture program, ocean-field[0], \curOcean 0
   #
   # TODO for now only one set of textures
   gl.getUniformLocation program, \prevOcean
@@ -448,59 +448,45 @@ window.requestAnimationFrame = window.mozRequestAnimationFrame
 window.cancelAnimationFrame = window.mozCancelAnimationFrame
                             or window.webkitCancelAnimationFrame
 
-# load texture
-cur-ocean = gl.createTexture!
-new Image
-  &onload = !->
-    gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
-    gl.bindTexture gl.TEXTURE_2D, cur-ocean
-    gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this
-    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR
-    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST
-    gl.generateMipmap gl.TEXTURE_2D
+function set-texture texture, data
+  gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
+  gl.bindTexture gl.TEXTURE_2D, texture
+  gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, data
+  gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR
+  gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST
+  gl.generateMipmap gl.TEXTURE_2D
+  texture
 
-    draw!
+!function load-image src, cb
+  new Image
+    &onload = cb
+    &src = src
 
-  &src = \packed16.png
+ocean-field = []
+
+load-image \packed16.png !->
+  c = document.createElement(\canvas) <<< @{width, height}
+  ctx = c.getContext \2d
+  ctx.drawImage this, 0 0
+  # unpack sections
+  for y of [0 512 1024 1536]
+    for x of [0 1024]
+      ocean-field.push do
+        set-texture gl.createTexture!, ctx.getImageData x, y, 1024 512
+
+  draw!
 
 land-mask = gl.createTexture!
-new Image
-  &onload = !->
-    gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
-    gl.bindTexture gl.TEXTURE_2D, land-mask
-    gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this
-    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR
-    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST
-    gl.generateMipmap gl.TEXTURE_2D
-
-
-  &src = \land-mask.png
+load-image \land-mask.png !->
+  set-texture land-mask, this
 
 earth-texture = gl.createTexture!
-new Image
-  &onload = !->
-    gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
-    gl.bindTexture gl.TEXTURE_2D, earth-texture
-    gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this
-    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR
-    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST
-    gl.generateMipmap gl.TEXTURE_2D
-
-
-  &src = \blue-marble.jpg
+load-image \blue-marble.jpg !->
+  set-texture earth-texture, this
 
 night-texture = gl.createTexture!
-new Image
-  &onload = !->
-    gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
-    gl.bindTexture gl.TEXTURE_2D, night-texture
-    gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this
-    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR
-    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST
-    gl.generateMipmap gl.TEXTURE_2D
-
-
-  &src = \black-marble.jpg
+load-image \black-marble.jpg !->
+  set-texture night-texture, this
 
 setup-buffers!
 
