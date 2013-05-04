@@ -41,27 +41,30 @@ function packed = packed_field(values)
   % to [-1, 1]
   scaled_around_zero = packed ./ max_abs;
 
-  pos = scaled_around_zero(scaled_around_zero > 0);
-  % to [negative, 0]
-  posl = log(pos);
-  % to [128, 255]
-  pospacked = (posl + 10) / 10 * 128 + 128;
+  packed = uint8(floor((scaled_around_zero + 0.5) * 255));
 
-  neg = scaled_around_zero(scaled_around_zero < 0);
-  negl = log(-neg);
-  % to [0, 127], reversed, so small negative numbers will be close to 0.5
-  % along with small positive numbers. That way billinear interpolation won't
-  % jump from large negative to small positive and vice versa arund 0.5.
-  negpacked = (negl + 10) / 10 * 128 + 128;
 
-  % put it all together
-  posidx = packed > 0;
-  negidx = packed < 0;
+  %pos = scaled_around_zero(scaled_around_zero > 0);
+  %% to [negative, 0]
+  %posl = log(pos);
+  %% to [128, 255]
+  %pospacked = (posl + 10) / 10 * 128 + 128;
 
-  packed(posidx) = pospacked;
-  packed(negidx) = negpacked;
+  %neg = scaled_around_zero(scaled_around_zero < 0);
+  %negl = log(-neg);
+  %% to [0, 127], reversed, so small negative numbers will be close to 0.5
+  %% along with small positive numbers. That way billinear interpolation won't
+  %% jump from large negative to small positive and vice versa arund 0.5.
+  %negpacked = (negl + 10) / -10 * 128 + 128;
 
-  % turn it into a uint8array
-  packed = uint8(floor(packed));
+  %% put it all together
+  %posidx = packed > 0;
+  %negidx = packed < 0;
+
+  %packed(posidx) = pospacked;
+  %packed(negidx) = negpacked;
+
+  %% turn it into a uint8array
+  %packed = uint8(floor(packed));
 end
 
