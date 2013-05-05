@@ -25,6 +25,70 @@ plain-quad-vertex =  """
   }
 """
 
+ocean-current-common = """
+  // a simple boolean lookup to deal with edge effects around continents.
+  uniform sampler2D landMask;
+
+  bool isWater(vec2 coords) {
+    // no fancy unpacking or wrapping, thankfully
+    return texture2D(landMask, coords).r > 0.;
+  }
+
+  // we need all three to be able to interpolate between months.
+  // well, we technically don't need 3, but having the previous set
+  // makes it easier to look backwards in time.
+  uniform sampler2D prevOcean;
+  uniform sampler2D curOcean;
+  uniform sampler2D nextOcean;
+
+  // vector values were normalized to [-1, 1] then transposed to [0, 1].
+  vec2 unpack(vec2 val) {
+    return val - vec2(0.5, 0.5);
+  }
+
+  // the vector field value
+  // the first is RG, the second is BA
+  vec2 unpackVal(vec2 coords, bool first, sampler2D fieldSet) {
+    if (first) {
+      return unpack(texture2D(fieldSet, coords).rg);
+    } else {
+      return unpack(texture2D(fieldSet, coords).ba);
+    }
+  }
+
+  // unpack current timestamped field from 2-packed texture
+  // see the `octave` folder for details.
+
+  // time is [-1, 2)
+  //
+  // Vector fields are essentially trilinearly interpolated,
+  // in 2D for the current timestamp automatically by openGL,
+  // and through time by this function.
+  vec2 fieldAt(vec2 coords, float time) {
+    if (isWater(coords)) {
+      float monthOffset = fract(time);
+
+      vec2 startVal;
+      vec2 endVal;
+      if (time < 0.) {
+        startVal = unpackVal(coords, false, prevOcean);
+        endVal   = unpackVal(coords, true, curOcean);
+      } else {
+        if(time >= 1.) {
+          startVal = unpackVal(coords, false, curOcean);
+          endVal   = unpackVal(coords, true, nextOcean);
+        } else {
+          startVal = unpackVal(coords, true, curOcean);
+          endVal   = unpackVal(coords, false, curOcean);
+        }
+      }
+
+      return mix(startVal, endVal, monthOffset);
+    } else {
+      return vec2(0., 0.);
+    }
+  }
+"""
 programs <<<
   globe: shader-program do
     vertex: """
@@ -50,21 +114,11 @@ programs <<<
 
       uniform sampler2D texture;
 
-      varying vec2 tex; // coords
+      varying vec2 tex;
 
-      uniform sampler2D oceanCurrent;
-      uniform sampler2D earthTexture;
-
-      bool isWater(vec2 coords) {
-        vec3 val = texture2D(oceanCurrent, coords).xyz;
-        return val.z == 1.0;
-      }
-
-      // transform packed texture field
-      vec2 fieldAt(vec2 coords) {
-        vec3 val = texture2D(oceanCurrent, coords).xyz;
-        return vec2(val.x - 0.5, val.y - 0.5);
-      }
+      uniform sampler2D curEarthTexture;
+      uniform sampler2D nextEarthTexture;
+      uniform float landBlend;
 
       // tweak variables for masking
       uniform float m;
@@ -76,8 +130,12 @@ programs <<<
       uniform float minVal;
       uniform float maxVal;
 
+      #ocean-current-common
+
+      uniform float time;
+
       void main() {
-        if (isWater(tex)) {
+        if (texture2D(landMask, tex).r == 1.0) {
           vec4 pixel = texture2D(texture, tex);
 
           // stretch contrast
@@ -85,7 +143,7 @@ programs <<<
           vec3 normalized = pixel.rgb - vec3(minVal, minVal, minVal);
           pixel.rgb = clamp(normalized / range, vec3(0.,0.,0.), vec3(1.,1.,1.));
 
-          float magnitude = length(fieldAt(tex));
+          float magnitude = length(fieldAt(tex, time));
 
           // not in paper, but in 2002 e/l texture advection:
           // masking by magnitude
@@ -95,10 +153,21 @@ programs <<<
             alpha = (1. - pow(1. - ratio, m)) * (1. - pow(1. - pixel, vec4(n)));
           }
 
-          gl_FragColor = pixel * alpha;
-          gl_FragColor.b = gl_FragColor.b / 0.8 + 0.2;
+          vec4 masked = pixel * alpha;
+
+          // slight blue coloration for visual appeal
+          masked.b = masked.b / 0.9 + 0.1;
+          gl_FragColor = masked;
         } else {
-          gl_FragColor = texture2D(earthTexture, tex);
+          // mix this and next month
+          // blue marble textures are offset from prime meridian
+          vec2 landCoord = tex;
+          landCoord.x += 0.5;
+          gl_FragColor = mix(
+            texture2D(curEarthTexture, landCoord),
+            texture2D(nextEarthTexture, landCoord),
+            landBlend
+          );
         }
       }"""
     uniforms:
@@ -112,30 +181,20 @@ programs <<<
         \1f 0.4
       maxVal:
         \1f 0.6
+      time:
+        \1f 0
   noise-transport: shader-program do
     vertex: plain-quad-vertex
     fragment: """
       precision mediump float;
 
-      uniform sampler2D field;
       uniform sampler2D noise;
 
       varying vec2 tex;
 
       uniform vec2 randomOffset;
-
-      // transform packed texture field
-      vec2 fieldAt(vec2 coords) {
-        vec3 val = texture2D(field, coords).xyz;
-        return vec2(val.x - 0.5, val.y - 0.5);
-      }
-
-      bool isWater(vec2 coords) {
-        vec3 val = texture2D(field, coords).xyz;
-        return val.z == 1.0;
-      }
-
-      //vec2 size = vec2(1024., 512.);
+      
+      #ocean-current-common
 
       void main() {
         if (isWater(tex)) {
@@ -156,7 +215,7 @@ programs <<<
           //gl_FragColor = texture2D(noise, pos);
           gl_FragColor = texture2D(noise, currentPosition);
         } else {
-          gl_FragColor = texture2D(noise, tex);
+          gl_FragColor = texture2D(noise, tex + randomOffset);
         }
       }
     """
@@ -165,27 +224,24 @@ programs <<<
     fragment: (stepsForwards, stepsBackwards) -> """
       precision mediump float;
 
-      uniform sampler2D oceanCurrent;
       uniform sampler2D transportedNoise;
 
       varying vec2 tex;
 
+      #ocean-current-common
+
       uniform bool useOrthogonal;
 
-      // transform packed texture field
-      vec2 orthogonalFieldAt(vec2 coords) {
-        vec3 val = texture2D(oceanCurrent, coords).xyz;
+      vec2 licFieldAt(vec2 coords, float time) {
+        vec2 val = fieldAt(coords, time);
         if (useOrthogonal) {
-          return vec2(-(val.y - 0.5), val.x - 0.5);
+          return vec2(-val.y, val.x);
         } else {
-          return vec2((val.x - 0.5), val.y - 0.5);
+          return val;
         }
       }
 
-      bool isWater(vec2 coords) {
-        vec3 val = texture2D(oceanCurrent, coords).xyz;
-        return val.z == 1.0;
-      }
+      uniform float time;
 
       uniform vec2 size;
       uniform float h;
@@ -198,27 +254,27 @@ programs <<<
       void main() {
         if (isWater(tex)) {
           // LIC backwards and forwards
-          vec3 pixel = vec3(0.0, 0.0, 0.0);
+          vec3 pixel = vec3(0., 0., 0.);
           vec2 pos = tex;
 
-          vec2 field = orthogonalFieldAt(pos);
+          vec2 field = licFieldAt(pos, time);
           for(int i = 0; i < stepsBackwards; ++i) {
             pixel = pixel + texture2D(transportedNoise, pos).rgb;
             pos = pos - field * h / size;
-            field = orthogonalFieldAt(pos);
+            field = licFieldAt(pos, time);
           }
           pos = tex;
-          field = orthogonalFieldAt(pos);
+          field = licFieldAt(pos, time);
           for(int i = 0; i < stepsForwards; ++i) {
             pixel = pixel + texture2D(transportedNoise, pos).rgb;
             pos = pos + field * h / size;
-            field = orthogonalFieldAt(pos);
+            field = licFieldAt(pos, time);
           }
 
           // average
           pixel = pixel / #{stepsForwards + stepsBackwards}.0;
 
-          gl_FragColor = vec4(pixel, 1.0);
+          gl_FragColor = vec4(pixel, 1.);
         } else {
           gl_FragColor = texture2D(transportedNoise, tex);
         }
@@ -231,34 +287,27 @@ programs <<<
         \1f 0.75
       useOrthogonal:
         \1i true
+      time:
+        \1f 0.0
 
   advection: shader-program do
     vertex: plain-quad-vertex
     fragment: (steps) -> """
       precision mediump float;
 
-      uniform sampler2D oceanCurrent;
       uniform sampler2D previousTexture;
+
+      #ocean-current-common
 
       // when out of bounds, pull new noise
       uniform sampler2D noise;
-
       uniform vec2 randomOffset;
 
       varying vec2 tex;
 
-      // transform packed texture field
-      vec2 fieldAt(vec2 coords) {
-        vec3 val = texture2D(oceanCurrent, coords).xyz;
-        return vec2(val.x - 0.5, val.y - 0.5);
-      }
+      uniform float time;
 
-      bool isWater(vec2 coords) {
-        vec3 val = texture2D(oceanCurrent, coords).xyz;
-        return val.z == 1.0;
-      }
-
-      vec2 size = vec2(1024., 512.);
+      uniform vec2 size;
 
       uniform float h;
 
@@ -267,20 +316,27 @@ programs <<<
           vec2 currentPosition = tex;
 
           vec2 pos = tex;
-          vec2 field = fieldAt(pos);
+          vec2 field = fieldAt(pos, time);
           for(int i = 0; i < #steps; ++i) {
             pos = pos - field * h / size;
-            field = fieldAt(pos);
+            field = fieldAt(pos, time);
           }
-          gl_FragColor = texture2D(previousTexture, pos);
+
+          if (isWater(pos)) {
+            gl_FragColor = texture2D(previousTexture, pos);
+          } else {
+            // inject noise into the system at boundaries, otherwise there are
+            // streak artifacts since the noise isn't transported.
+            gl_FragColor = texture2D(noise, tex + randomOffset);
+          }
         } else {
-          // inject noise into the system at boundaries, otherwise there are
-          // streak artifacts since the noise isn't transported.
-          gl_FragColor = texture2D(previousTexture, tex + randomOffset);
+          gl_FragColor = texture2D(noise, tex + randomOffset);
         }
       }
     """
     uniforms:
+      size:
+        \2f 1024 512
       h:
         \1f 0.125
   blend: shader-program do
@@ -290,19 +346,6 @@ programs <<<
 
       uniform sampler2D orthogonalLIC;
       uniform sampler2D advected;
-
-      uniform sampler2D oceanCurrent;
-
-      bool isWater(vec2 coords) {
-        vec3 val = texture2D(oceanCurrent, coords).xyz;
-        return val.z != 0.0;
-      }
-
-      // transform packed texture field
-      vec2 fieldAt(vec2 coords) {
-        vec3 val = texture2D(oceanCurrent, coords).xyz;
-        return vec2(val.x - 0.5, val.y - 0.5);
-      }
 
       varying vec2 tex;
 

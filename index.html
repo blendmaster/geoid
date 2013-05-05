@@ -9,19 +9,29 @@
     cursor: pointer;
     position: absolute;
     top: 0;
+    margin: 0;
+    padding: 0;
   }
   #texture { list-style-type: none; padding-left: 0 }
+  html, body { padding: 0; margin: 0; }
   body { background: black; color: #ccc; }
   #controls {
     position: absolute;
-    left: 0;
+    left: -100px;
     top: 0;
     padding: 1em;
     opacity: 0.1;
+    height: 100%;
+    -moz-box-sizing: border-box;
+    -webkit-box-sizing: border-box;
+    overflow-y: auto;
+    transition: .5s left;
   }
   #controls:hover {
     background: rgba(0, 0, 0, 0.7);
+    left: 0;
     opacity: 1;
+    transition: .5s left;
   }
   h1 {
     font-size: 14pt;
@@ -31,7 +41,110 @@
     font-size: 12pt;
     margin: .5em 0;
   }
+
+  #loading {
+    position: absolute;
+    z-index: 100;
+    width: 100%;
+  }
+  #loading div {
+    width: 200px;
+    margin: auto;
+  }
+
+  #timestamp {
+    position: absolute;
+    right: 0;
+    top: 0;
+    padding: 1em;
+    font-size: 19pt;
+    z-index: 100;
+  }
+
+  #about {
+    bottom: 0;
+    height: 50%;
+    margin: auto;
+    min-width: 320px;
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+    top: 0;
+    visibility: hidden;
+    width: 100%;
+    z-index: 100;
+  }
+  #about > div {
+      -moz-box-sizing: border-box;
+      -webkit-box-sizing: border-box;
+      background-color: rgba(0,0,0, 0.98);
+      box-shadow: 0 0 15px 15px rgba(0, 0, 0, 0.98);
+      height: 100%;
+      margin: 0 auto;
+      min-width: 320px;
+      overflow-y: auto;
+      padding: 0.5em;
+      pointer-events: all;
+      width: 50%;
+  }
+ a { color: #55f; }
+  #return {
+    background-color: rgba(0, 0, 0, 0.15);
+    bottom: 0;
+    display: block;
+    left: 0;
+    opacity: 0;
+    position: absolute;
+    right: 0;
+    top: 0;
+    visibility: hidden;
+    z-index: 90;
+  }
+
+  #about:target, #about:target ~ #return {
+    opacity: 1;
+    visibility: visible;
+  }
 </style>
+
+<div id=loading>
+  <div>
+    <h2>Loading...</h2>
+    <progress max=1 id=load-progress>This might take a while...</progress>
+  </div>
+</div>
+
+<div id=timestamp>
+</div>
+
+<section id=about><div>
+  <h2>About</h2>
+  <p>Geoid is an implementation of the technique in <a href=http://www.vis.uni-stuttgart.de/~weiskopf/publications/eurovis07.pdf>Animation of Orthogonal Texture-Based Vector Field Visualization (2007) by Sven Bachthaler and Daniel Weiskopf</a>, using the ocean flow dataset from <a href=http://ecco2.jpl.nasa.gov/products/>ECCO2</a> and earth images from <a href=http://visibleearth.nasa.gov/view_cat.php?categoryID=1484>Blue Marble Next Generation</a>.
+  <p>I've exposed parameters of the algorithm so you can see experiment. They are explained briefly here:
+  <dl>
+    <dt>Velocity Masking</dt>
+    <dd>To make motion stand out from noise, mask areas with low velocity. N and M control the masking level by the function described in <a href=http://www.cs.ucdavis.edu/~ma/ECS276/readings/Jobard_TVCG02.pdf>Lagrangian-Eulerian Advection of Noise and Dye Textures for Unsteady Flow Visualization</a> 4.10.2.</dd>
+    <dt>LIC</dt>
+    <dd>Line integral convolution over random noise, i.e. streaks along the field. You can choose either orthogonal lines, which are easier to follow in motion, or parallel lines, which look nicer in my opinion. Step size controls the numeric integration step, while backwards/forwards controls the number of loops to take. Increasing backwards/forwards taxes the GPU more.</dd>
+    <dt>Advection</dt>
+    <dd>The previous texture is advected along the fiel, i.e. is moved like dye in moving water. The Step size and number of Steps is similar to LIC. Increasing step stize speeds up the apparent velocity of the animation.</dd>
+    <dt>Blending</dt>
+    <dd>New noise is blended with advected old noise in order to keep enough noise in the system to show motion. Set the blend level all the way to the left to see the raw LIC texture or all the way to the right to see just the advection.</dd>
+    <dt>Land</dt>
+    <dd>Change the land texture from day to night, purely for aesthetic reasons.</dd>
+    <dt>Time<dt>
+    <dd>Control the time-varying ocean current field.</dd>
+    <dt>Load more Data<dt>
+    <dd>Attempt to load the other 18 years of available ocean data. Caution, the data takes up about 256 MB of graphics memory total, and I don't know what happens if you don't have enough.</dd>
+  </dl>
+  <h3>Implementation</h3>
+  <p>geoid is implemented in <a href=https://github.com/satyr/coco>coco</a> + WebGL shaders. The main flow of the algorithm is very well suited to GPU shaders. coco smoothes out the annoying parts of javascript.
+    <a href=https://github.com/blendmaster/geoid>View source on Github.</a>
+ 
+</div></section>
+
+
+<a id=return href=#></a>
 
 <div>
   <canvas id=canvas width=1024 height=1024>
@@ -41,16 +154,11 @@
 
 <div id=controls>
   <h1>Geoid</h1>
+  <div><a href=#about>About</a></div>
   <div>
-    <button id=zoom-in  type=button>Zoom in</button><br>
-    <button id=zoom-out type=button>Zoom out</button><br>
+    <button id=zoom-in  type=button>Zoom in</button>
+    <button id=zoom-out type=button>Zoom out</button>
   </div>
-  <section>
-    <h2>Velocity Masking</h2>
-    <div><label><input type=checkbox id=enable-mask checked> Enabled</label></div>
-    <div><label>M: <input type=range min=0.01 max=50 step=0.05 id=m></label></div>
-    <div><label>N: <input type=range min=0.01 max=30 step=0.01 id=n></label></div>
-  </section>
   <section>
     <h2>LIC</h2>
     <div>Type:
@@ -77,16 +185,30 @@
     <div><label>Max: <input type=range min=0.00 max=1 step=0.01 id=max-value></label></div>
   </section>
   <section>
+    <h2>Velocity Masking</h2>
+    <div><label><input type=checkbox id=enable-mask checked> Enabled</label></div>
+    <div><label>M: <input type=range min=0.01 max=50 step=0.05 id=m></label></div>
+    <div><label>N: <input type=range min=0.01 max=30 step=0.01 id=n></label></div>
+  </section>
+  <section>
     <h2>Land</h2>
     <label><input type=radio name=texture id=day checked>Day</label>
     <label><input type=radio name=texture id=night>Night</label>
+  </section>
+  <section>
+    <h2>Time</h2>
+    <div><label>Time: <input type=range min=0.00 max=15.99 step=0.01 id=time></label></div>
+    <div><button id=play>Play</button><button id=pause>Pause</button></div>
+    <div><label>Speed: <input type=range min=0.01 max=0.5 step=0.005 id=speed></label></div>
+    <div><button id=load-more>Load more data</button></div>
   </section>
   <div>
     <button id=reset type=button>Reset All</button><br>
   </div>
   <footer>
     <small>
-      Written in 2013 by Steven Ruppert.
+      Written in 2013 by Steven Ruppert.<br>
+      <a href=https://github.com/blendmaster/geoid>View source on Github.</a>
     </small>
   </footer>
 </div>

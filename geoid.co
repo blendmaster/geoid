@@ -62,7 +62,7 @@ distance = get \distance or 1 / Math.tan(radians(fov) / 2)
   fov := 15deg
   distance := 1 / Math.tan(radians(fov) / 2)
 
-  $(\m)value = 10
+  $(\m)value = 3
   $(\n)value = 3
 
   $(\blend-ratio)value =  0.95
@@ -72,8 +72,8 @@ distance = get \distance or 1 / Math.tan(radians(fov) / 2)
   $(\advection-h)value = 0.5
   $(\advection-steps)value = 10
 
-  min-val.value = 0.3
-  max-val.value = 0.7
+  min-val.value = 0.4
+  max-val.value = 0.6
 
 window.addEventListener \unload !->
   set \rotation arr rotation
@@ -98,8 +98,10 @@ window.addEventListener \unload !->
   set \min-val min-val.value
   set \max-val max-val.value
 
-$(\m)value = get \m or 10
+$(\m)value = get \m or 3
 $(\n)value = get \n or 3
+
+$(\speed)value = 0.1
 
 $(\blend-ratio)value = get \blend-ratio or 0.95
 
@@ -116,9 +118,9 @@ $ \zoom-out .addEventListener \click !-> fov := clamp fov + 1, 1, 100
 # keep min/maxval symmetric
 symmetric = $ \symmetric
 min-val = $ \min-value
-  &value = parseFloat get \min-val or 0.3
+  &value = parseFloat get(\min-val) ? 0.4
 max-val = $ \max-value
-  &value = parseFloat get \max-val or 0.7
+  &value = parseFloat get \max-val or 0.6
 
 reclamp = !->
   min-val.value = Math.min 0.5 parseFloat min-val.value
@@ -134,7 +136,7 @@ max-val.addEventListener \input !->
   if symmetric.checked
     min-val.value = 1 - parseFloat @value
 
-addWheelListener document.body, !->
+addWheelListener canvas, !->
   fov := clamp fov + it.deltaY / Math.abs(it.deltaY), 1, 100
 
 ctx = document.createElement \canvas .getContext \2d
@@ -252,23 +254,24 @@ setup-buffers = !->
 
 num-triangles = latBands * lonBands * 6
 
-p =
+export p =
   globe           : load \globe gl
   noise-transport : load \noiseTransport gl
   orthogonal-lic  : load do
     \orthogonalLic gl
-    20, 20
+    parseInt($(\backwards)value, 10) || 10
+    parseInt($(\forwards)value, 10) || 10
   advection       : load \advection gl, 10
   blend           : load \blend gl
 
-# XXX since the LIC steps are in loops, and GLSL doesn't do loops that can't be 
+# XXX since the LIC steps are in loops, and GLSL doesn't do loops that can't be
 # unrolled, we must recompile the shader if they change
 $ \backwards .addEventListener \change !->
   p.orthogonalLic = load do
     \orthogonalLic gl
     parseInt @value, 10
     parseInt $(\forwards)value, 10
-$ \backwards .addEventListener \change !->
+$ \forwards .addEventListener \change !->
   p.orthogonalLic = load do
     \orthogonalLic gl
     parseInt $(\backwards)value, 10
@@ -276,56 +279,105 @@ $ \backwards .addEventListener \change !->
 $ \advection-steps .addEventListener \change !->
   p.advection = load \advection gl, parseInt(@value, 10)
 
-# the requestAnimationFrame id, so we don't get more than one
-var frame
+!function load-texture program, texture, name, number
+  gl.activeTexture gl"TEXTURE#number"
+  gl.bindTexture gl.TEXTURE_2D, texture
+  gl.getUniformLocation program, name
+    gl.uniform1i &, number
 
-export draw = !->
-  # first: random noise injection and initial advection
-  gl.useProgram p.noise-transport
+!function load-plain-quad-program program, framebuffer
+  gl.useProgram program
   gl
     &viewport 0 0 2048 1024
-    &disable     DEPTH_TEST
-    &disable     CULL_FACE
-  gl.bindFramebuffer gl.FRAMEBUFFER, noise-transport.framebuffer
+    &disable  DEPTH_TEST
+    &disable  CULL_FACE
+  gl.bindFramebuffer gl.FRAMEBUFFER, framebuffer
   gl.clear COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT
 
-  gl.activeTexture gl.TEXTURE0
-  gl.bindTexture gl.TEXTURE_2D, texture
-  gl.getUniformLocation p.noise-transport, \texture
-    gl.uniform1i &, 0
-  
-  # use random offset of noise to vary over time cheaply
-  uniform gl, p.noise-transport, \randomOffset \2f Math.random!, Math.random!
+mod = (num, base) -> ((num % base) + base) % base
 
-  gl.activeTexture gl.TEXTURE1
-  gl.bindTexture gl.TEXTURE_2D, noise-tex
-  gl.getUniformLocation p.noise-transport, \noise
-    gl.uniform1i &, 1
+!function load-ocean-current-common program
+  slices-available = ocean-field.length
 
-  bind-buffer gl, p.noise-transport, \vertexCoord, buffers.basic-quad, 2
-  bind-buffer gl, p.noise-transport, \texCoord, buffers.basic-quad-tex, 2
+  time = parseFloat $(\time)value
+  cur = Math.floor time / 2
+  last = mod cur - 1, slices-available
+  next = mod cur + 1, slices-available
+
+  load-texture program, ocean-field[cur], \curOcean 0
+  load-texture program, ocean-field[last], \prevOcean 1
+  load-texture program, ocean-field[next], \nextOcean 2
+
+  # to [0, 2]
+  time-val = ((time / 2) - cur) * 2
+  gl.getUniformLocation program, \time
+    gl.uniform1f &, time-val
+
+!function load-isWater program
+  load-texture program, land-mask, \landMask 3
+
+!function draw-plain-quad program
+  bind-buffer gl, program, \vertexCoord, buffers.basic-quad, 2
+  bind-buffer gl, program, \texCoord, buffers.basic-quad-tex, 2
 
   gl.bindBuffer ELEMENT_ARRAY_BUFFER, buffers.basic-quad-indices
   gl.drawElements TRIANGLES, 6, UNSIGNED_SHORT, 0
 
+# the requestAnimationFrame id, so we don't get more than one
+var frame
+
+# flag to seed blending
+initial = true
+
+# time state
+playing = true
+$ \play
+  &disabled = true
+  &addEventListener \click !->
+    playing := true
+    @disabled = true
+    $ \pause .disabled = false
+$ \pause
+  &disabled = false
+  &addEventListener \click !->
+    playing := false
+    @disabled = true
+    $ \play .disabled = false
+
+export draw = !->
+  slices-available = ocean-field.length * 2
+  t = parseFloat $(\time)value
+  if playing
+    speed = parseFloat $(\speed)value
+    new-t = mod t + speed, slices-available
+    $ \time .value = new-t
+    t = new-t
+
+    update-timestamp!
+
+  ##################################################################
+  # first: random noise injection and initial advection
+  load-plain-quad-program p.noise-transport, noise-transport.framebuffer
+
+  #load-ocean-current-common p.noise-transport
+  load-isWater p.noise-transport
+
+  # use random offset of noise to vary over time cheaply
+  # TODO needs to be time correlated
+  uniform gl, p.noise-transport, \randomOffset \2f Math.random!, Math.random!
+
+  load-texture p.noise-transport, noise-tex, \noise 4
+
+  draw-plain-quad p.noise-transport
+
+  ##################################################################
   # 2nd orthogonal LIC
-  gl.useProgram p.orthogonal-lic
-  gl
-    &viewport 0 0 2048 1024
-    &disable     DEPTH_TEST
-    &disable     CULL_FACE
-  gl.bindFramebuffer gl.FRAMEBUFFER, orthogonal-lic.framebuffer
-  gl.clear COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT
+  load-plain-quad-program p.orthogonal-lic, orthogonal-lic.framebuffer
 
-  gl.activeTexture gl.TEXTURE0
-  gl.bindTexture gl.TEXTURE_2D, texture
-  gl.getUniformLocation p.orthogonal-lic, \oceanCurrent
-    gl.uniform1i &, 0
+  load-ocean-current-common p.orthogonal-lic
+  load-isWater p.orthogonal-lic
 
-  gl.activeTexture gl.TEXTURE1
-  gl.bindTexture gl.TEXTURE_2D, noise-transport.texture
-  gl.getUniformLocation p.orthogonal-lic, \transportedNoise
-    gl.uniform1i &, 1
+  load-texture p.orthogonal-lic, noise-transport.texture, \transportedNoise 4
 
   gl.getUniformLocation p.orthogonal-lic, \useOrthogonal
     gl.uniform1i &, $(\orthogonal)checked
@@ -333,87 +385,50 @@ export draw = !->
   gl.getUniformLocation p.orthogonal-lic, \h
     gl.uniform1f &, parseFloat $(\lic-h)value
 
-  bind-buffer gl, p.orthogonal-lic, \vertexCoord, buffers.basic-quad, 2
-  bind-buffer gl, p.orthogonal-lic, \texCoord, buffers.basic-quad-tex, 2
+  draw-plain-quad p.orthogonal-lic
 
-  gl.bindBuffer ELEMENT_ARRAY_BUFFER, buffers.basic-quad-indices
-  gl.drawElements TRIANGLES, 6, UNSIGNED_SHORT, 0
-
+  ##################################################################
   # 3rd part 1: advect previous display along field
-  gl.useProgram p.advection
-  gl
-    &viewport 0 0 2048 1024
-    &disable     DEPTH_TEST
-    &disable     CULL_FACE
-  gl.bindFramebuffer gl.FRAMEBUFFER, advection.framebuffer
-  gl.clear COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT
+  load-plain-quad-program p.advection, advection.framebuffer
 
-  gl.activeTexture gl.TEXTURE0
-  gl.bindTexture gl.TEXTURE_2D, texture
-  gl.getUniformLocation p.advection, \oceanCurrent
-    gl.uniform1i &, 0
+  load-ocean-current-common p.advection
+  load-isWater p.advection
 
-  gl.activeTexture gl.TEXTURE1
-  gl.bindTexture gl.TEXTURE_2D, blend.texture
-  gl.getUniformLocation p.advection, \previousTexture
-    gl.uniform1i &, 1
+  load-texture p.advection,
+    if initial then noise-tex else blend.texture
+    \previousTexture 4
 
   gl.getUniformLocation p.advection, \h
     gl.uniform1f &, parseFloat($ \advection-h .value)
-  #
+
   # use random offset of noise to vary over time cheaply
+  # TODO time correlation?
   uniform gl, p.advection, \randomOffset \2f Math.random!, Math.random!
 
-  gl.activeTexture gl.TEXTURE2
-  gl.bindTexture gl.TEXTURE_2D, noise-tex
-  gl.getUniformLocation p.advection, \noise
-    gl.uniform1i &, 2
+  load-texture p.advection, noise-tex, \noise 5
 
-  bind-buffer gl, p.advection, \vertexCoord, buffers.basic-quad, 2
-  bind-buffer gl, p.advection, \texCoord, buffers.basic-quad-tex, 2
+  draw-plain-quad p.advection
 
-  gl.bindBuffer ELEMENT_ARRAY_BUFFER, buffers.basic-quad-indices
-  gl.drawElements TRIANGLES, 6, UNSIGNED_SHORT, 0
-
+  ##################################################################
   # 3rd part 2: blend new orthogonal LIC with advected previous display
-  gl.useProgram p.blend
-  gl
-    &viewport 0 0 2048 1024
-    &disable     DEPTH_TEST
-    &disable     CULL_FACE
-  gl.bindFramebuffer gl.FRAMEBUFFER, blend.framebuffer
-  gl.clear COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT
+  load-plain-quad-program p.blend, blend.framebuffer
 
-  gl.activeTexture gl.TEXTURE0
-  gl.bindTexture gl.TEXTURE_2D, orthogonal-lic.texture
-  gl.getUniformLocation p.blend, \orthogonalLIC
-    gl.uniform1i &, 0
-
-  gl.activeTexture gl.TEXTURE1
-  gl.bindTexture gl.TEXTURE_2D, advection.texture
-  gl.getUniformLocation p.blend, \advected
-    gl.uniform1i &, 1
-
-  gl.activeTexture gl.TEXTURE2
-  gl.bindTexture gl.TEXTURE_2D, texture
-  gl.getUniformLocation p.blend, \oceanCurrent
-    gl.uniform1i &, 2
+  load-texture p.blend, orthogonal-lic.texture, \orthogonalLIC 4
+  load-texture p.blend, advection.texture, \advected 5
 
   gl.getUniformLocation p.blend, \ratio
     gl.uniform1f &, parseFloat $(\blend-ratio)value
 
-  bind-buffer gl, p.orthogonal-lic, \vertexCoord, buffers.basic-quad, 2
-  bind-buffer gl, p.orthogonal-lic, \texCoord, buffers.basic-quad-tex, 2
+  draw-plain-quad p.blend
 
-  gl.bindBuffer ELEMENT_ARRAY_BUFFER, buffers.basic-quad-indices
-  gl.drawElements TRIANGLES, 6, UNSIGNED_SHORT, 0
-
+  ##################################################################
+  # finally, draw the result to globe, with some postprocessing
   gl.useProgram p.globe
   gl
     &viewport 0 0 width, height
     &enable     DEPTH_TEST
     &enable     CULL_FACE
-  gl.bindFramebuffer gl.FRAMEBUFFER, null
+  gl.bindFramebuffer gl.FRAMEBUFFER, null # screen
   gl.clear COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT
 
   if current-rot!? then current-rot := mat4.identity! # XXX weird bug
@@ -430,21 +445,33 @@ export draw = !->
 
   uniform gl, p.globe, \ModelViewMatrix \Matrix4fv model-view
 
-  gl.activeTexture gl.TEXTURE0
-  gl.bindTexture gl.TEXTURE_2D, blend.texture
-  gl.getUniformLocation p.globe, \texture
-    gl.uniform1i &, 0
+  load-ocean-current-common p.globe
+  load-isWater p.globe
 
-  gl.activeTexture gl.TEXTURE1
-  gl.bindTexture gl.TEXTURE_2D, texture
-  gl.getUniformLocation p.globe, \oceanCurrent
-    gl.uniform1i &, 1
+  load-texture p.globe, blend.texture, \texture 4
 
-  gl.activeTexture gl.TEXTURE2
-  gl.bindTexture gl.TEXTURE_2D,
-    if $(\day)checked then earth-texture else night-texture
-  gl.getUniformLocation p.globe, \earthTexture
-    gl.uniform1i &, 2
+  use-day = $(\day)checked
+
+  month-no = mod Math.floor(t), 12
+  next-no = mod month-no + 1, 12
+  load-texture p.globe,
+    if use-day
+      land-textures[month-no]
+    else
+      night-texture
+    \curEarthTexture 5
+
+  if use-day
+    load-texture p.globe,
+      land-textures[next-no]
+      \nextEarthTexture 6
+  else
+    # can't bind texture to multiple points, so just reuse
+    gl.getUniformLocation p.globe, \nextEarthTexture
+      gl.uniform1i &, 5
+
+  gl.getUniformLocation p.globe, \landBlend
+    gl.uniform1f &, t - Math.floor(t)
 
   gl.getUniformLocation p.globe, \mask
     gl.uniform1i &, $(\enable-mask)checked
@@ -467,6 +494,9 @@ export draw = !->
   gl.bindBuffer ELEMENT_ARRAY_BUFFER, buffers.idx
   gl.drawElements TRIANGLES, num-triangles, UNSIGNED_SHORT, 0
 
+  initial := false
+
+  # redraw later
   cancelAnimationFrame frame
   frame := requestAnimationFrame draw
 
@@ -475,48 +505,113 @@ window.requestAnimationFrame = window.mozRequestAnimationFrame
 window.cancelAnimationFrame = window.mozCancelAnimationFrame
                             or window.webkitCancelAnimationFrame
 
-# load texture
-texture = gl.createTexture!
-new Image
-  &onload = !->
-    gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
-    gl.bindTexture gl.TEXTURE_2D, texture
-    gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this
-    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR
-    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST
-    gl.generateMipmap gl.TEXTURE_2D
+function set-texture texture, data
+  gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
+  gl.bindTexture gl.TEXTURE_2D, texture
+  gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, data
+  gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR
+  gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST
+  gl.generateMipmap gl.TEXTURE_2D
+  texture
 
+!function load-image src, cb
+  new Image
+    &onload = cb
+    # load from s3, since I feel bad about stuffing binary data in github pages
+    &crossOrigin = \anonymous
+    &src = "http://s3.amazonaws.com/blendmaster-geoid/#src"
+
+ocean-field = []
+land-textures = []
+
+# 15 ocean textures (each with 16 timeslices) (load 2 first, since they take
+# up 240 MB memory total)
+# 1 land mask
+# 12 blue marble months
+# 1 dark marble
+textures-to-load = total-textures = 2 + 1 + 12 + 1
+maybe-draw = !->
+  $ \load-progress .value = 1 - textures-to-load / total-textures
+
+  if textures-to-load is 0
+    $ \loading .hidden = true
+    $ \load-progress .value = 0
+
+    $ \time .setAttribute \max ocean-field.length * 2 - 0.01
+
+    $ \time .value = 0
     draw!
 
-  &src = \ocean-current.png
+pad = -> if it >= 10 then it else "0#{it}"
 
-earth-texture = gl.createTexture!
-new Image
-  &onload = !->
-    gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
-    gl.bindTexture gl.TEXTURE_2D, earth-texture
-    gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this
-    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR
-    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST
-    gl.generateMipmap gl.TEXTURE_2D
+function split-packed img, idx
+  c = document.createElement(\canvas) <<< img{width, height}
+  ctx = c.getContext \2d
+  ctx.drawImage img, 0 0
+  # unpack sections
+  start = idx * 8
+  n = 0
+  for y of [0 512 1024 1536]
+    for x of [0 1024]
+      ocean-field[start + n] =
+        set-texture gl.createTexture!, ctx.getImageData x, y, 1024 512
+      ++n
 
-    draw!
+  --textures-to-load
+  maybe-draw!
 
-  &src = \blue-marble.jpg
+for i til 2
+  let
+    load-image "packed-#{pad i}.png" !-> split-packed this, i
+
+# load the rest of textures
+$ \load-more .addEventListener \click !->
+
+  total-textures := 13
+  textures-to-load := 13
+  $ \loading .hidden = false
+  $ \load-progress .value = 0
+
+  for i from 2 til 15
+    let
+      load-image "packed-#{pad i}.png" !-> split-packed this, i
+
+$ \time .addEventListener \input update-timestamp
+
+function update-timestamp
+  # update text timestamp
+  months = parseFloat $(\time)value
+  years = Math.floor months / 12
+  y-months = Math.floor months - years * 12
+
+  # a diff date
+  date = new Date
+    &setFullYear do
+      1991 + years
+      y-months
+      1
+
+  $ \timestamp .textContent = 
+    "#{date.getFullYear!}-#{pad date.getMonth! + 1}"
+
+land-mask = gl.createTexture!
+load-image \land-mask.png !->
+  set-texture land-mask, this
+  --textures-to-load
+  maybe-draw!
+
+for i from 1 to 12
+  let
+    load-image "blue-marble-#{pad i}.jpg" !->
+      land-textures[i - 1] = set-texture gl.createTexture!, this
+      --textures-to-load
+      maybe-draw!
 
 night-texture = gl.createTexture!
-new Image
-  &onload = !->
-    gl.pixelStorei gl.UNPACK_FLIP_Y_WEBGL, true
-    gl.bindTexture gl.TEXTURE_2D, night-texture
-    gl.texImage2D gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this
-    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR
-    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST
-    gl.generateMipmap gl.TEXTURE_2D
-
-    draw!
-
-  &src = \black-marble.jpg
+load-image \black-marble.jpg !->
+  set-texture night-texture, this
+  --textures-to-load
+  maybe-draw!
 
 setup-buffers!
 
