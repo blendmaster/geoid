@@ -292,20 +292,22 @@ $ \advection-steps .addEventListener \change !->
   gl.bindFramebuffer gl.FRAMEBUFFER, framebuffer
   gl.clear COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT
 
-!function load-ocean-current-common program
-  load-texture program, ocean-field[0], \curOcean 0
-  #
-  # TODO for now only one set of textures
-  gl.getUniformLocation program, \prevOcean
-    gl.uniform1i &, 0
-  gl.getUniformLocation program, \nextOcean
-    gl.uniform1i &, 0
-  #load-texture program, cur-ocean, \prevOcean 1
-  #load-texture program, cur-ocean, \nextOcean 2
+mod = (num, base) -> ((num % base) + base) % base
 
-  # TODO figure out this
+!function load-ocean-current-common program
+  time = parseFloat $(\time)value
+  cur = Math.floor time / 2
+  last = mod cur - 1, 8
+  next = mod cur + 1, 8
+
+  load-texture program, ocean-field[cur], \curOcean 0
+  load-texture program, ocean-field[last], \prevOcean 1
+  load-texture program, ocean-field[next], \nextOcean 2
+
+  # to [0, 2]
+  time-val = ((time / 2) - cur) * 2
   gl.getUniformLocation program, \time
-    gl.uniform1f &, parseFloat $(\time)value
+    gl.uniform1f &, time-val
 
 !function load-isWater program
   load-texture program, land-mask, \landMask 3
@@ -323,7 +325,28 @@ var frame
 # flag to seed blending
 initial = true
 
+# time state
+playing = true
+$ \play 
+  &disabled = true
+  &addEventListener \click !->
+    playing := true
+    @disabled = true
+    $ \pause .disabled = false
+$ \pause 
+  &disabled = false
+  &addEventListener \click !->
+    playing := false
+    @disabled = true
+    $ \play .disabled = false
+
 export draw = !->
+  if playing
+    t = parseFloat $(\time)value
+    speed = parseFloat $(\speed)value
+    new-t = mod t + speed, 16
+    $ \time .value = new-t
+    
   ##################################################################
   # first: random noise injection and initial advection
   load-plain-quad-program p.noise-transport, noise-transport.framebuffer

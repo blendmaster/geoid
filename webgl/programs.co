@@ -39,17 +39,17 @@ ocean-current-common = """
   // makes it easier to look backwards in time.
   uniform sampler2D prevOcean;
   uniform sampler2D curOcean;
-  uniform sampler2D nextOccean;
+  uniform sampler2D nextOcean;
 
   // vector values were normalized to [-1, 1] then transposed to [0, 1].
   vec2 unpack(vec2 val) {
     return val - vec2(0.5, 0.5);
   }
 
-  // the vector field value according to month
+  // the vector field value
   // the first is RG, the second is BA
-  vec2 unpackVal(vec2 coords, float month, sampler2D fieldSet) {
-    if (month == 0.) {
+  vec2 unpackVal(vec2 coords, bool first, sampler2D fieldSet) {
+    if (first) {
       return unpack(texture2D(fieldSet, coords).rg);
     } else {
       return unpack(texture2D(fieldSet, coords).ba);
@@ -58,6 +58,8 @@ ocean-current-common = """
 
   // unpack current timestamped field from 2-packed texture
   // see the `octave` folder for details.
+
+  // time is [-1, 2)
   //
   // Vector fields are essentially trilinearly interpolated,
   // in 2D for the current timestamp automatically by openGL,
@@ -65,21 +67,19 @@ ocean-current-common = """
   vec2 fieldAt(vec2 coords, float time) {
     if (isWater(coords)) {
       float monthOffset = fract(time);
-      float thisMonth = floor(time);
-      float nextMonth = thisMonth + 1.;
 
       vec2 startVal;
       vec2 endVal;
-      if (thisMonth == -1.) {
-        startVal = unpackVal(coords, 1., prevOcean);
-        endVal   = unpackVal(coords, 0., curOcean);
+      if (time < 0.) {
+        startVal = unpackVal(coords, false, prevOcean);
+        endVal   = unpackVal(coords, true, curOcean);
       } else {
-        if(thisMonth == 1.) {
-          startVal = unpackVal(coords, 1., curOcean);
-          endVal   = unpackVal(coords, 0., nextOccean);
+        if(time >= 1.) {
+          startVal = unpackVal(coords, false, curOcean);
+          endVal   = unpackVal(coords, true, nextOcean);
         } else {
-          startVal = unpackVal(coords, thisMonth, curOcean);
-          endVal   = unpackVal(coords, nextMonth, curOcean);
+          startVal = unpackVal(coords, true, curOcean);
+          endVal   = unpackVal(coords, false, curOcean);
         }
       }
 

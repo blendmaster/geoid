@@ -2,7 +2,7 @@
 original commented source there. */
 (function(){
   "use strict";
-  var canvas, ref$, width, height, k, ref1$, v, x0$, arr, rotation, e, currentRot, fov, distance, symmetric, x1$, minVal, ref2$, x2$, maxVal, reclamp, ctx, buffers, latBands, lonBands, noiseTex, noiseTransport, orthogonalLic, advection, blend, setupBuffers, numTriangles, p, frame, initial, draw, oceanField, landMask, earthTexture, nightTexture, pointUnder, x3$, out$ = typeof exports != 'undefined' && exports || this;
+  var canvas, ref$, width, height, k, ref1$, v, x0$, arr, rotation, e, currentRot, fov, distance, symmetric, x1$, minVal, ref2$, x2$, maxVal, reclamp, ctx, buffers, latBands, lonBands, noiseTex, noiseTransport, orthogonalLic, advection, blend, setupBuffers, numTriangles, p, mod, frame, initial, playing, x3$, x4$, draw, oceanField, landMask, earthTexture, nightTexture, pointUnder, x5$, out$ = typeof exports != 'undefined' && exports || this;
   canvas = document.getElementById('canvas');
   ref$ = document.documentElement, canvas.width = ref$.clientWidth, canvas.height = ref$.clientHeight;
   width = canvas.width, height = canvas.height;
@@ -245,15 +245,21 @@ original commented source there. */
     gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
     gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
   }
+  mod = function(num, base){
+    return (num % base + base) % base;
+  };
   function loadOceanCurrentCommon(program){
-    var x3$, x4$, x5$;
-    loadTexture(program, oceanField[0], 'curOcean', 0);
-    x3$ = gl.getUniformLocation(program, 'prevOcean');
-    gl.uniform1i(x3$, 0);
-    x4$ = gl.getUniformLocation(program, 'nextOcean');
-    gl.uniform1i(x4$, 0);
-    x5$ = gl.getUniformLocation(program, 'time');
-    gl.uniform1f(x5$, parseFloat($('time').value));
+    var time, cur, last, next, timeVal, x3$;
+    time = parseFloat($('time').value);
+    cur = Math.floor(time / 2);
+    last = mod(cur - 1, 8);
+    next = mod(cur + 1, 8);
+    loadTexture(program, oceanField[cur], 'curOcean', 0);
+    loadTexture(program, oceanField[last], 'prevOcean', 1);
+    loadTexture(program, oceanField[next], 'nextOcean', 2);
+    timeVal = (time / 2 - cur) * 2;
+    x3$ = gl.getUniformLocation(program, 'time');
+    gl.uniform1f(x3$, timeVal);
   }
   function loadIsWater(program){
     loadTexture(program, landMask, 'landMask', 3);
@@ -265,8 +271,29 @@ original commented source there. */
     gl.drawElements(TRIANGLES, 6, UNSIGNED_SHORT, 0);
   }
   initial = true;
+  playing = true;
+  x3$ = $('play');
+  x3$.disabled = true;
+  x3$.addEventListener('click', function(){
+    playing = true;
+    this.disabled = true;
+    $('pause').disabled = false;
+  });
+  x4$ = $('pause');
+  x4$.disabled = false;
+  x4$.addEventListener('click', function(){
+    playing = false;
+    this.disabled = true;
+    $('play').disabled = false;
+  });
   out$.draw = draw = function(){
-    var x3$, x4$, x5$, x6$, x7$, rot, modelView, x8$, x9$, x10$, x11$, x12$;
+    var t, speed, newT, x5$, x6$, x7$, x8$, x9$, rot, modelView, x10$, x11$, x12$, x13$, x14$;
+    if (playing) {
+      t = parseFloat($('time').value);
+      speed = parseFloat($('speed').value);
+      newT = mod(t + speed, 16);
+      $('time').value = newT;
+    }
     loadPlainQuadProgram(p.noiseTransport, noiseTransport.framebuffer);
     loadIsWater(p.noiseTransport);
     uniform(gl, p.noiseTransport, 'randomOffset', '2f', Math.random(), Math.random());
@@ -276,10 +303,10 @@ original commented source there. */
     loadOceanCurrentCommon(p.orthogonalLic);
     loadIsWater(p.orthogonalLic);
     loadTexture(p.orthogonalLic, noiseTransport.texture, 'transportedNoise', 4);
-    x3$ = gl.getUniformLocation(p.orthogonalLic, 'useOrthogonal');
-    gl.uniform1i(x3$, $('orthogonal').checked);
-    x4$ = gl.getUniformLocation(p.orthogonalLic, 'h');
-    gl.uniform1f(x4$, parseFloat($('lic-h').value));
+    x5$ = gl.getUniformLocation(p.orthogonalLic, 'useOrthogonal');
+    gl.uniform1i(x5$, $('orthogonal').checked);
+    x6$ = gl.getUniformLocation(p.orthogonalLic, 'h');
+    gl.uniform1f(x6$, parseFloat($('lic-h').value));
     drawPlainQuad(p.orthogonalLic);
     loadPlainQuadProgram(p.advection, advection.framebuffer);
     loadOceanCurrentCommon(p.advection);
@@ -287,22 +314,22 @@ original commented source there. */
     loadTexture(p.advection, initial
       ? noiseTex
       : blend.texture, 'previousTexture', 4);
-    x5$ = gl.getUniformLocation(p.advection, 'h');
-    gl.uniform1f(x5$, parseFloat($('advection-h').value));
+    x7$ = gl.getUniformLocation(p.advection, 'h');
+    gl.uniform1f(x7$, parseFloat($('advection-h').value));
     uniform(gl, p.advection, 'randomOffset', '2f', Math.random(), Math.random());
     loadTexture(p.advection, noiseTex, 'noise', 5);
     drawPlainQuad(p.advection);
     loadPlainQuadProgram(p.blend, blend.framebuffer);
     loadTexture(p.blend, orthogonalLic.texture, 'orthogonalLIC', 4);
     loadTexture(p.blend, advection.texture, 'advected', 5);
-    x6$ = gl.getUniformLocation(p.blend, 'ratio');
-    gl.uniform1f(x6$, parseFloat($('blend-ratio').value));
+    x8$ = gl.getUniformLocation(p.blend, 'ratio');
+    gl.uniform1f(x8$, parseFloat($('blend-ratio').value));
     drawPlainQuad(p.blend);
     gl.useProgram(p.globe);
-    x7$ = gl;
-    x7$.viewport(0, 0, width, height);
-    x7$.enable(DEPTH_TEST);
-    x7$.enable(CULL_FACE);
+    x9$ = gl;
+    x9$.viewport(0, 0, width, height);
+    x9$.enable(DEPTH_TEST);
+    x9$.enable(CULL_FACE);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
     if (currentRot == null) {
@@ -319,16 +346,16 @@ original commented source there. */
     loadIsWater(p.globe);
     loadTexture(p.globe, blend.texture, 'texture', 4);
     loadTexture(p.globe, $('day').checked ? earthTexture : nightTexture, 'earthTexture', 5);
-    x8$ = gl.getUniformLocation(p.globe, 'mask');
-    gl.uniform1i(x8$, $('enable-mask').checked);
-    x9$ = gl.getUniformLocation(p.globe, 'm');
-    gl.uniform1f(x9$, parseFloat($('m').value) || 10);
-    x10$ = gl.getUniformLocation(p.globe, 'n');
-    gl.uniform1f(x10$, parseFloat($('n').value) || 3);
-    x11$ = gl.getUniformLocation(p.globe, 'minVal');
-    gl.uniform1f(x11$, parseFloat($('min-value').value || 0));
-    x12$ = gl.getUniformLocation(p.globe, 'maxVal');
-    gl.uniform1f(x12$, parseFloat($('max-value').value || 1));
+    x10$ = gl.getUniformLocation(p.globe, 'mask');
+    gl.uniform1i(x10$, $('enable-mask').checked);
+    x11$ = gl.getUniformLocation(p.globe, 'm');
+    gl.uniform1f(x11$, parseFloat($('m').value) || 10);
+    x12$ = gl.getUniformLocation(p.globe, 'n');
+    gl.uniform1f(x12$, parseFloat($('n').value) || 3);
+    x13$ = gl.getUniformLocation(p.globe, 'minVal');
+    gl.uniform1f(x13$, parseFloat($('min-value').value || 0));
+    x14$ = gl.getUniformLocation(p.globe, 'maxVal');
+    gl.uniform1f(x14$, parseFloat($('max-value').value || 1));
     bindBuffer(gl, p.globe, 'modelCoord', buffers.modelCoord, 3);
     bindBuffer(gl, p.globe, 'texCoord', buffers.texCoord, 2);
     gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.idx);
@@ -349,10 +376,10 @@ original commented source there. */
     return texture;
   }
   function loadImage(src, cb){
-    var x3$;
-    x3$ = new Image;
-    x3$.onload = cb;
-    x3$.src = src;
+    var x5$;
+    x5$ = new Image;
+    x5$.onload = cb;
+    x5$.src = src;
   }
   oceanField = [];
   loadImage('packed16.png', function(){
@@ -394,11 +421,11 @@ original commented source there. */
       return [x / Math.sqrt(x * x + y * y), y / Math.sqrt(x * x + y * y), 0];
     }
   };
-  x3$ = canvas;
-  x3$.addEventListener('mousedown', function(arg$){
+  x5$ = canvas;
+  x5$.addEventListener('mousedown', function(arg$){
     var i0, j0, p, rotate, stop;
     i0 = arg$.clientX, j0 = arg$.clientY;
-    x3$.style.cursor = 'move';
+    x5$.style.cursor = 'move';
     p = pointUnder(i0, j0);
     rotate = function(arg$){
       var i, j, q, cp, cq, angle, axis;
@@ -410,7 +437,7 @@ original commented source there. */
       axis = vec3.cross(cp, cq);
       currentRot = mat4.rotate(mat4.identity(), angle, axis);
     };
-    x3$.addEventListener('mousemove', rotate);
+    x5$.addEventListener('mousemove', rotate);
     stop = (function(ran){
       return function(){
         if (!ran) {
@@ -418,13 +445,13 @@ original commented source there. */
           mat4.multiply(currentRot, rotation, rotation);
           currentRot = mat4.identity();
         }
-        x3$.style.cursor = 'pointer';
-        x3$.removeEventListener('mousemove', rotate);
-        x3$.removeEventListener('mouseup', stop);
-        x3$.removeEventListener('mouseleave', stop);
+        x5$.style.cursor = 'pointer';
+        x5$.removeEventListener('mousemove', rotate);
+        x5$.removeEventListener('mouseup', stop);
+        x5$.removeEventListener('mouseleave', stop);
       };
     }.call(this, false));
-    x3$.addEventListener('mouseup', stop);
-    x3$.addEventListener('mouseleave', stop);
+    x5$.addEventListener('mouseup', stop);
+    x5$.addEventListener('mouseleave', stop);
   });
 }).call(this);

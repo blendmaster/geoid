@@ -81,9 +81,12 @@
     <label><input type=radio name=texture id=day checked>Day</label>
     <label><input type=radio name=texture id=night>Night</label>
   </section>
-  <div>
-    <div><label>Time: <input type=range min=0.00 max=1 step=0.01 id=time></label></div>
-  </div>
+  <section>
+    <h2>Time</h2>
+    <div><label>Time: <input type=range min=0.00 max=15.99 step=0.01 id=time></label></div>
+    <div><button id=play>Play</button><button id=pause>Pause</button></div>
+    <div><label>Speed: <input type=range min=0.01 max=0.1 step=0.005 id=speed></label></div>
+  </section>
   <div>
     <button id=reset type=button>Reset All</button><br>
   </div>
