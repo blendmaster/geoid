@@ -394,7 +394,8 @@ original commented source there. */
     var x5$;
     x5$ = new Image;
     x5$.onload = cb;
-    x5$.src = src;
+    x5$.crossOrigin = 'anonymous';
+    x5$.src = "http://s3.amazonaws.com/blendmaster-geoid/" + src;
   }
   oceanField = [];
   landTextures = [];

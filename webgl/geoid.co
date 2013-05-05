@@ -515,7 +515,9 @@ function set-texture texture, data
 !function load-image src, cb
   new Image
     &onload = cb
-    &src = src
+    # load from s3, since I feel bad about stuffing binary data in github pages
+    &crossOrigin = \anonymous
+    &src = "http://s3.amazonaws.com/blendmaster-geoid/#src"
 
 ocean-field = []
 land-textures = []
