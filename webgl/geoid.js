@@ -55,15 +55,15 @@ original commented source there. */
     currentRot = mat4.identity();
     fov = 15;
     distance = 1 / Math.tan(radians(fov) / 2);
-    $('m').value = 10;
+    $('m').value = 3;
     $('n').value = 3;
     $('blend-ratio').value = 0.95;
     $('forwards').value = 10;
     $('backwards').value = 10;
     $('advection-h').value = 0.5;
     $('advection-steps').value = 10;
-    minVal.value = 0.3;
-    maxVal.value = 0.7;
+    minVal.value = 0.4;
+    maxVal.value = 0.6;
   }
   window.addEventListener('unload', function(){
     set('rotation', arr(rotation));
@@ -81,8 +81,9 @@ original commented source there. */
     set('min-val', minVal.value);
     set('max-val', maxVal.value);
   });
-  $('m').value = get('m') || 10;
+  $('m').value = get('m') || 3;
   $('n').value = get('n') || 3;
+  $('speed').value = 0.1;
   $('blend-ratio').value = get('blend-ratio') || 0.95;
   $('forwards').value = get('forwards') || 10;
   $('backwards').value = get('backwards') || 10;
@@ -97,9 +98,9 @@ original commented source there. */
   });
   symmetric = $('symmetric');
   x1$ = minVal = $('min-value');
-  x1$.value = parseFloat((ref2$ = get('min-val')) != null ? ref2$ : 0.3);
+  x1$.value = parseFloat((ref2$ = get('min-val')) != null ? ref2$ : 0.4);
   x2$ = maxVal = $('max-value');
-  x2$.value = parseFloat(get('max-val')) || 0.7;
+  x2$.value = parseFloat(get('max-val')) || 0.6;
   reclamp = function(){
     minVal.value = Math.min(0.5, parseFloat(minVal.value));
     maxVal.value = Math.max(0.5, parseFloat(maxVal.value));

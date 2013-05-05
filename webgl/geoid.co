@@ -62,7 +62,7 @@ distance = get \distance or 1 / Math.tan(radians(fov) / 2)
   fov := 15deg
   distance := 1 / Math.tan(radians(fov) / 2)
 
-  $(\m)value = 10
+  $(\m)value = 3
   $(\n)value = 3
 
   $(\blend-ratio)value =  0.95
@@ -72,8 +72,8 @@ distance = get \distance or 1 / Math.tan(radians(fov) / 2)
   $(\advection-h)value = 0.5
   $(\advection-steps)value = 10
 
-  min-val.value = 0.3
-  max-val.value = 0.7
+  min-val.value = 0.4
+  max-val.value = 0.6
 
 window.addEventListener \unload !->
   set \rotation arr rotation
@@ -98,8 +98,10 @@ window.addEventListener \unload !->
   set \min-val min-val.value
   set \max-val max-val.value
 
-$(\m)value = get \m or 10
+$(\m)value = get \m or 3
 $(\n)value = get \n or 3
+
+$(\speed)value = 0.1
 
 $(\blend-ratio)value = get \blend-ratio or 0.95
 
@@ -116,9 +118,9 @@ $ \zoom-out .addEventListener \click !-> fov := clamp fov + 1, 1, 100
 # keep min/maxval symmetric
 symmetric = $ \symmetric
 min-val = $ \min-value
-  &value = parseFloat get(\min-val) ? 0.3
+  &value = parseFloat get(\min-val) ? 0.4
 max-val = $ \max-value
-  &value = parseFloat get \max-val or 0.7
+  &value = parseFloat get \max-val or 0.6
 
 reclamp = !->
   min-val.value = Math.min 0.5 parseFloat min-val.value
