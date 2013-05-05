@@ -2,7 +2,7 @@
 original commented source there. */
 (function(){
   "use strict";
-  var canvas, ref$, width, height, k, ref1$, v, x0$, arr, rotation, e, currentRot, fov, distance, symmetric, x1$, minVal, ref2$, x2$, maxVal, reclamp, ctx, buffers, latBands, lonBands, noiseTex, noiseTransport, orthogonalLic, advection, blend, setupBuffers, numTriangles, p, mod, frame, initial, playing, x3$, x4$, draw, oceanField, landTextures, texturesToLoad, totalTextures, maybeDraw, landMask, pad, i, nightTexture, pointUnder, x5$, out$ = typeof exports != 'undefined' && exports || this;
+  var canvas, ref$, width, height, k, ref1$, v, x0$, arr, rotation, e, currentRot, fov, distance, symmetric, x1$, minVal, ref2$, x2$, maxVal, reclamp, ctx, buffers, latBands, lonBands, noiseTex, noiseTransport, orthogonalLic, advection, blend, setupBuffers, numTriangles, p, mod, frame, initial, playing, x3$, x4$, draw, oceanField, landTextures, texturesToLoad, totalTextures, maybeDraw, pad, i, landMask, nightTexture, pointUnder, x5$, out$ = typeof exports != 'undefined' && exports || this;
   canvas = document.getElementById('canvas');
   ref$ = document.documentElement, canvas.width = ref$.clientWidth, canvas.height = ref$.clientHeight;
   width = canvas.width, height = canvas.height;
@@ -122,7 +122,7 @@ original commented source there. */
       minVal.value = 1 - parseFloat(this.value);
     }
   });
-  addWheelListener(document.body, function(it){
+  addWheelListener(canvas, function(it){
     fov = clamp(fov + it.deltaY / Math.abs(it.deltaY), 1, 100);
   });
   ctx = document.createElement('canvas').getContext('2d');
@@ -249,11 +249,12 @@ original commented source there. */
     return (num % base + base) % base;
   };
   function loadOceanCurrentCommon(program){
-    var time, cur, last, next, timeVal, x3$;
+    var slicesAvailable, time, cur, last, next, timeVal, x3$;
+    slicesAvailable = oceanField.length;
     time = parseFloat($('time').value);
     cur = Math.floor(time / 2);
-    last = mod(cur - 1, 8);
-    next = mod(cur + 1, 8);
+    last = mod(cur - 1, slicesAvailable);
+    next = mod(cur + 1, slicesAvailable);
     loadTexture(program, oceanField[cur], 'curOcean', 0);
     loadTexture(program, oceanField[last], 'prevOcean', 1);
     loadTexture(program, oceanField[next], 'nextOcean', 2);
@@ -287,13 +288,15 @@ original commented source there. */
     $('play').disabled = false;
   });
   out$.draw = draw = function(){
-    var t, speed, newT, x5$, x6$, x7$, x8$, x9$, rot, modelView, useDay, monthNo, nextNo, x10$, x11$, x12$, x13$, x14$, x15$, x16$;
+    var slicesAvailable, t, speed, newT, x5$, x6$, x7$, x8$, x9$, rot, modelView, useDay, monthNo, nextNo, x10$, x11$, x12$, x13$, x14$, x15$, x16$;
+    slicesAvailable = oceanField.length * 2;
     t = parseFloat($('time').value);
     if (playing) {
       speed = parseFloat($('speed').value);
-      newT = mod(t + speed, 16);
+      newT = mod(t + speed, slicesAvailable);
       $('time').value = newT;
       t = newT;
+      updateTimestamp();
     }
     loadPlainQuadProgram(p.noiseTransport, noiseTransport.framebuffer);
     loadIsWater(p.noiseTransport);
@@ -395,36 +398,17 @@ original commented source there. */
   }
   oceanField = [];
   landTextures = [];
-  texturesToLoad = totalTextures = 1 + 1 + 12 + 1;
+  texturesToLoad = totalTextures = 2 + 1 + 12 + 1;
   maybeDraw = function(){
-    $('load-progress').value = 1 - totalTextures / texturesToLoad;
+    $('load-progress').value = 1 - texturesToLoad / totalTextures;
     if (texturesToLoad === 0) {
       $('loading').hidden = true;
       $('load-progress').value = 0;
+      $('time').setAttribute('max', oceanField.length * 2 - 0.01);
+      $('time').value = 0;
       draw();
     }
   };
-  loadImage('packed16.png', function(){
-    var c, ref$, ctx, i$, ref1$, len$, y, j$, ref2$, len1$, x;
-    c = (ref$ = document.createElement('canvas'), ref$.width = this.width, ref$.height = this.height, ref$);
-    ctx = c.getContext('2d');
-    ctx.drawImage(this, 0, 0);
-    for (i$ = 0, len$ = (ref1$ = [0, 512, 1024, 1536]).length; i$ < len$; ++i$) {
-      y = ref1$[i$];
-      for (j$ = 0, len1$ = (ref2$ = [0, 1024]).length; j$ < len1$; ++j$) {
-        x = ref2$[j$];
-        oceanField.push(setTexture(gl.createTexture(), ctx.getImageData(x, y, 1024, 512)));
-      }
-    }
-    --texturesToLoad;
-    maybeDraw();
-  });
-  landMask = gl.createTexture();
-  loadImage('land-mask.png', function(){
-    setTexture(landMask, this);
-    --texturesToLoad;
-    maybeDraw();
-  });
   pad = function(it){
     if (it >= 10) {
       return it;
@@ -432,8 +416,60 @@ original commented source there. */
       return "0" + it;
     }
   };
+  function splitPacked(img, idx){
+    var c, ref$, ctx, start, n, i$, ref1$, len$, y, j$, ref2$, len1$, x;
+    c = (ref$ = document.createElement('canvas'), ref$.width = img.width, ref$.height = img.height, ref$);
+    ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    start = idx * 8;
+    n = 0;
+    for (i$ = 0, len$ = (ref1$ = [0, 512, 1024, 1536]).length; i$ < len$; ++i$) {
+      y = ref1$[i$];
+      for (j$ = 0, len1$ = (ref2$ = [0, 1024]).length; j$ < len1$; ++j$) {
+        x = ref2$[j$];
+        oceanField[start + n] = setTexture(gl.createTexture(), ctx.getImageData(x, y, 1024, 512));
+        ++n;
+      }
+    }
+    --texturesToLoad;
+    return maybeDraw();
+  }
+  for (i = 0; i < 2; ++i) {
+    (fn$.call(this, i));
+  }
+  $('load-more').addEventListener('click', function(){
+    var i;
+    totalTextures = 13;
+    texturesToLoad = 13;
+    $('loading').hidden = false;
+    $('load-progress').value = 0;
+    for (i = 2; i < 15; ++i) {
+      (fn$.call(this, i));
+    }
+    function fn$(i){
+      loadImage("packed-" + pad(i) + ".png", function(){
+        splitPacked(this, i);
+      });
+    }
+  });
+  $('time').addEventListener('input', updateTimestamp);
+  function updateTimestamp(){
+    var months, years, yMonths, x5$, date;
+    months = parseFloat($('time').value);
+    years = Math.floor(months / 12);
+    yMonths = Math.floor(months - years * 12);
+    x5$ = date = new Date;
+    x5$.setFullYear(1991 + years, yMonths, 1);
+    return $('timestamp').textContent = date.getFullYear() + "-" + pad(date.getMonth() + 1);
+  }
+  landMask = gl.createTexture();
+  loadImage('land-mask.png', function(){
+    setTexture(landMask, this);
+    --texturesToLoad;
+    maybeDraw();
+  });
   for (i = 1; i <= 12; ++i) {
-    loadImage("blue-marble-" + pad(i) + ".jpg", fn$);
+    (fn1$.call(this, i));
   }
   nightTexture = gl.createTexture();
   loadImage('black-marble.jpg', function(){
@@ -487,9 +523,16 @@ original commented source there. */
     x5$.addEventListener('mouseup', stop);
     x5$.addEventListener('mouseleave', stop);
   });
-  function fn$(){
-    landTextures.push(setTexture(gl.createTexture(), this));
-    --texturesToLoad;
-    maybeDraw();
+  function fn$(i){
+    loadImage("packed-" + pad(i) + ".png", function(){
+      splitPacked(this, i);
+    });
+  }
+  function fn1$(i){
+    loadImage("blue-marble-" + pad(i) + ".jpg", function(){
+      landTextures[i - 1] = setTexture(gl.createTexture(), this);
+      --texturesToLoad;
+      maybeDraw();
+    });
   }
 }).call(this);

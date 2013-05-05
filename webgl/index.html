@@ -9,8 +9,11 @@
     cursor: pointer;
     position: absolute;
     top: 0;
+    margin: 0;
+    padding: 0;
   }
   #texture { list-style-type: none; padding-left: 0 }
+  html, body { padding: 0; margin: 0; }
   body { background: black; color: #ccc; }
   #controls {
     position: absolute;
@@ -18,6 +21,10 @@
     top: 0;
     padding: 1em;
     opacity: 0.1;
+    height: 100%;
+    -moz-box-sizing: border-box;
+    -webkit-box-sizing: border-box;
+    overflow-y: auto;
   }
   #controls:hover {
     background: rgba(0, 0, 0, 0.7);
@@ -41,6 +48,15 @@
     width: 200px;
     margin: auto;
   }
+
+  #timestamp {
+    position: absolute;
+    right: 0;
+    top: 0;
+    padding: 1em;
+    font-size: 19pt;
+    z-index: 100;
+  }
 </style>
 
 <div id=loading>
@@ -48,6 +64,9 @@
     <h2>Loading...</h2>
     <progress max=1 id=load-progress>This might take a while...</progress>
   </div>
+</div>
+
+<div id=timestamp>
 </div>
 
 <div>
@@ -59,8 +78,8 @@
 <div id=controls>
   <h1>Geoid</h1>
   <div>
-    <button id=zoom-in  type=button>Zoom in</button><br>
-    <button id=zoom-out type=button>Zoom out</button><br>
+    <button id=zoom-in  type=button>Zoom in</button>
+    <button id=zoom-out type=button>Zoom out</button>
   </div>
   <section>
     <h2>Velocity Masking</h2>
@@ -102,7 +121,8 @@
     <h2>Time</h2>
     <div><label>Time: <input type=range min=0.00 max=15.99 step=0.01 id=time></label></div>
     <div><button id=play>Play</button><button id=pause>Pause</button></div>
-    <div><label>Speed: <input type=range min=0.01 max=0.1 step=0.005 id=speed></label></div>
+    <div><label>Speed: <input type=range min=0.01 max=0.5 step=0.005 id=speed></label></div>
+    <div><button id=load-more>Load more data</button></div>
   </section>
   <div>
     <button id=reset type=button>Reset All</button><br>

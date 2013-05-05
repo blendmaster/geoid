@@ -134,7 +134,7 @@ max-val.addEventListener \input !->
   if symmetric.checked
     min-val.value = 1 - parseFloat @value
 
-addWheelListener document.body, !->
+addWheelListener canvas, !->
   fov := clamp fov + it.deltaY / Math.abs(it.deltaY), 1, 100
 
 ctx = document.createElement \canvas .getContext \2d
@@ -295,10 +295,12 @@ $ \advection-steps .addEventListener \change !->
 mod = (num, base) -> ((num % base) + base) % base
 
 !function load-ocean-current-common program
+  slices-available = ocean-field.length
+
   time = parseFloat $(\time)value
   cur = Math.floor time / 2
-  last = mod cur - 1, 8
-  next = mod cur + 1, 8
+  last = mod cur - 1, slices-available
+  next = mod cur + 1, slices-available
 
   load-texture program, ocean-field[cur], \curOcean 0
   load-texture program, ocean-field[last], \prevOcean 1
@@ -327,13 +329,13 @@ initial = true
 
 # time state
 playing = true
-$ \play 
+$ \play
   &disabled = true
   &addEventListener \click !->
     playing := true
     @disabled = true
     $ \pause .disabled = false
-$ \pause 
+$ \pause
   &disabled = false
   &addEventListener \click !->
     playing := false
@@ -341,20 +343,23 @@ $ \pause
     $ \play .disabled = false
 
 export draw = !->
+  slices-available = ocean-field.length * 2
   t = parseFloat $(\time)value
   if playing
     speed = parseFloat $(\speed)value
-    new-t = mod t + speed, 16
+    new-t = mod t + speed, slices-available
     $ \time .value = new-t
     t = new-t
-    
+
+    update-timestamp!
+
   ##################################################################
   # first: random noise injection and initial advection
   load-plain-quad-program p.noise-transport, noise-transport.framebuffer
 
   #load-ocean-current-common p.noise-transport
   load-isWater p.noise-transport
-  
+
   # use random offset of noise to vary over time cheaply
   # TODO needs to be time correlated
   uniform gl, p.noise-transport, \randomOffset \2f Math.random!, Math.random!
@@ -393,7 +398,7 @@ export draw = !->
 
   gl.getUniformLocation p.advection, \h
     gl.uniform1f &, parseFloat($ \advection-h .value)
-  
+
   # use random offset of noise to vary over time cheaply
   # TODO time correlation?
   uniform gl, p.advection, \randomOffset \2f Math.random!, Math.random!
@@ -515,31 +520,75 @@ function set-texture texture, data
 ocean-field = []
 land-textures = []
 
-# 1 ocean texture (soon more)
+# 15 ocean textures (each with 16 timeslices) (load 2 first, since they take
+# up 240 MB memory total)
 # 1 land mask
 # 12 blue marble months
 # 1 dark marble
-textures-to-load = total-textures = 1 + 1 + 12 + 1
+textures-to-load = total-textures = 2 + 1 + 12 + 1
 maybe-draw = !->
-  $ \load-progress .value = 1 - total-textures / textures-to-load
+  $ \load-progress .value = 1 - textures-to-load / total-textures
 
   if textures-to-load is 0
     $ \loading .hidden = true
     $ \load-progress .value = 0
+
+    $ \time .setAttribute \max ocean-field.length * 2 - 0.01
+
+    $ \time .value = 0
     draw!
 
-load-image \packed16.png !->
-  c = document.createElement(\canvas) <<< @{width, height}
+pad = -> if it >= 10 then it else "0#{it}"
+
+function split-packed img, idx
+  c = document.createElement(\canvas) <<< img{width, height}
   ctx = c.getContext \2d
-  ctx.drawImage this, 0 0
+  ctx.drawImage img, 0 0
   # unpack sections
+  start = idx * 8
+  n = 0
   for y of [0 512 1024 1536]
     for x of [0 1024]
-      ocean-field.push do
+      ocean-field[start + n] =
         set-texture gl.createTexture!, ctx.getImageData x, y, 1024 512
+      ++n
 
   --textures-to-load
   maybe-draw!
+
+for i til 2
+  let
+    load-image "packed-#{pad i}.png" !-> split-packed this, i
+
+# load the rest of textures
+$ \load-more .addEventListener \click !->
+
+  total-textures := 13
+  textures-to-load := 13
+  $ \loading .hidden = false
+  $ \load-progress .value = 0
+
+  for i from 2 til 15
+    let
+      load-image "packed-#{pad i}.png" !-> split-packed this, i
+
+$ \time .addEventListener \input update-timestamp
+
+function update-timestamp
+  # update text timestamp
+  months = parseFloat $(\time)value
+  years = Math.floor months / 12
+  y-months = Math.floor months - years * 12
+
+  # a diff date
+  date = new Date
+    &setFullYear do
+      1991 + years
+      y-months
+      1
+
+  $ \timestamp .textContent = 
+    "#{date.getFullYear!}-#{pad date.getMonth! + 1}"
 
 land-mask = gl.createTexture!
 load-image \land-mask.png !->
@@ -547,13 +596,12 @@ load-image \land-mask.png !->
   --textures-to-load
   maybe-draw!
 
-pad = -> if it >= 10 then it else "0#{it}"
-
 for i from 1 to 12
-  load-image "blue-marble-#{pad i}.jpg" !->
-    land-textures.push set-texture gl.createTexture!, this
-    --textures-to-load
-    maybe-draw!
+  let
+    load-image "blue-marble-#{pad i}.jpg" !->
+      land-textures[i - 1] = set-texture gl.createTexture!, this
+      --textures-to-load
+      maybe-draw!
 
 night-texture = gl.createTexture!
 load-image \black-marble.jpg !->

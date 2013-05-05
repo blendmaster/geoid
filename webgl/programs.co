@@ -215,7 +215,7 @@ programs <<<
           //gl_FragColor = texture2D(noise, pos);
           gl_FragColor = texture2D(noise, currentPosition);
         } else {
-          gl_FragColor = vec4(0.,0.,0.,1.);
+          gl_FragColor = texture2D(noise, tex + randomOffset);
         }
       }
     """
@@ -321,10 +321,15 @@ programs <<<
             pos = pos - field * h / size;
             field = fieldAt(pos, time);
           }
-          gl_FragColor = texture2D(previousTexture, pos);
+
+          if (isWater(pos)) {
+            gl_FragColor = texture2D(previousTexture, pos);
+          } else {
+            // inject noise into the system at boundaries, otherwise there are
+            // streak artifacts since the noise isn't transported.
+            gl_FragColor = texture2D(noise, tex + randomOffset);
+          }
         } else {
-          // inject noise into the system at boundaries, otherwise there are
-          // streak artifacts since the noise isn't transported.
           gl_FragColor = texture2D(noise, tex + randomOffset);
         }
       }
