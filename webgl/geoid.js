@@ -2,7 +2,7 @@
 original commented source there. */
 (function(){
   "use strict";
-  var canvas, ref$, width, height, k, ref1$, v, x0$, arr, rotation, e, currentRot, fov, distance, symmetric, x1$, minVal, ref2$, x2$, maxVal, reclamp, ctx, buffers, latBands, lonBands, noiseTex, noiseTransport, orthogonalLic, advection, blend, setupBuffers, numTriangles, p, mod, frame, initial, playing, x3$, x4$, draw, oceanField, landMask, earthTexture, nightTexture, pointUnder, x5$, out$ = typeof exports != 'undefined' && exports || this;
+  var canvas, ref$, width, height, k, ref1$, v, x0$, arr, rotation, e, currentRot, fov, distance, symmetric, x1$, minVal, ref2$, x2$, maxVal, reclamp, ctx, buffers, latBands, lonBands, noiseTex, noiseTransport, orthogonalLic, advection, blend, setupBuffers, numTriangles, p, mod, frame, initial, playing, x3$, x4$, draw, oceanField, landTextures, texturesToLoad, totalTextures, maybeDraw, landMask, pad, i, nightTexture, pointUnder, x5$, out$ = typeof exports != 'undefined' && exports || this;
   canvas = document.getElementById('canvas');
   ref$ = document.documentElement, canvas.width = ref$.clientWidth, canvas.height = ref$.clientHeight;
   width = canvas.width, height = canvas.height;
@@ -287,12 +287,13 @@ original commented source there. */
     $('play').disabled = false;
   });
   out$.draw = draw = function(){
-    var t, speed, newT, x5$, x6$, x7$, x8$, x9$, rot, modelView, x10$, x11$, x12$, x13$, x14$;
+    var t, speed, newT, x5$, x6$, x7$, x8$, x9$, rot, modelView, useDay, monthNo, nextNo, x10$, x11$, x12$, x13$, x14$, x15$, x16$;
+    t = parseFloat($('time').value);
     if (playing) {
-      t = parseFloat($('time').value);
       speed = parseFloat($('speed').value);
       newT = mod(t + speed, 16);
       $('time').value = newT;
+      t = newT;
     }
     loadPlainQuadProgram(p.noiseTransport, noiseTransport.framebuffer);
     loadIsWater(p.noiseTransport);
@@ -345,17 +346,28 @@ original commented source there. */
     loadOceanCurrentCommon(p.globe);
     loadIsWater(p.globe);
     loadTexture(p.globe, blend.texture, 'texture', 4);
-    loadTexture(p.globe, $('day').checked ? earthTexture : nightTexture, 'earthTexture', 5);
-    x10$ = gl.getUniformLocation(p.globe, 'mask');
-    gl.uniform1i(x10$, $('enable-mask').checked);
-    x11$ = gl.getUniformLocation(p.globe, 'm');
-    gl.uniform1f(x11$, parseFloat($('m').value) || 10);
-    x12$ = gl.getUniformLocation(p.globe, 'n');
-    gl.uniform1f(x12$, parseFloat($('n').value) || 3);
-    x13$ = gl.getUniformLocation(p.globe, 'minVal');
-    gl.uniform1f(x13$, parseFloat($('min-value').value || 0));
-    x14$ = gl.getUniformLocation(p.globe, 'maxVal');
-    gl.uniform1f(x14$, parseFloat($('max-value').value || 1));
+    useDay = $('day').checked;
+    monthNo = mod(Math.floor(t), 12);
+    nextNo = mod(monthNo + 1, 12);
+    loadTexture(p.globe, useDay ? landTextures[monthNo] : nightTexture, 'curEarthTexture', 5);
+    if (useDay) {
+      loadTexture(p.globe, landTextures[nextNo], 'nextEarthTexture', 6);
+    } else {
+      x10$ = gl.getUniformLocation(p.globe, 'nextEarthTexture');
+      gl.uniform1i(x10$, 5);
+    }
+    x11$ = gl.getUniformLocation(p.globe, 'landBlend');
+    gl.uniform1f(x11$, t - Math.floor(t));
+    x12$ = gl.getUniformLocation(p.globe, 'mask');
+    gl.uniform1i(x12$, $('enable-mask').checked);
+    x13$ = gl.getUniformLocation(p.globe, 'm');
+    gl.uniform1f(x13$, parseFloat($('m').value) || 10);
+    x14$ = gl.getUniformLocation(p.globe, 'n');
+    gl.uniform1f(x14$, parseFloat($('n').value) || 3);
+    x15$ = gl.getUniformLocation(p.globe, 'minVal');
+    gl.uniform1f(x15$, parseFloat($('min-value').value || 0));
+    x16$ = gl.getUniformLocation(p.globe, 'maxVal');
+    gl.uniform1f(x16$, parseFloat($('max-value').value || 1));
     bindBuffer(gl, p.globe, 'modelCoord', buffers.modelCoord, 3);
     bindBuffer(gl, p.globe, 'texCoord', buffers.texCoord, 2);
     gl.bindBuffer(ELEMENT_ARRAY_BUFFER, buffers.idx);
@@ -382,6 +394,16 @@ original commented source there. */
     x5$.src = src;
   }
   oceanField = [];
+  landTextures = [];
+  texturesToLoad = totalTextures = 1 + 1 + 12 + 1;
+  maybeDraw = function(){
+    $('load-progress').value = 1 - totalTextures / texturesToLoad;
+    if (texturesToLoad === 0) {
+      $('loading').hidden = true;
+      $('load-progress').value = 0;
+      draw();
+    }
+  };
   loadImage('packed16.png', function(){
     var c, ref$, ctx, i$, ref1$, len$, y, j$, ref2$, len1$, x;
     c = (ref$ = document.createElement('canvas'), ref$.width = this.width, ref$.height = this.height, ref$);
@@ -394,19 +416,30 @@ original commented source there. */
         oceanField.push(setTexture(gl.createTexture(), ctx.getImageData(x, y, 1024, 512)));
       }
     }
-    draw();
+    --texturesToLoad;
+    maybeDraw();
   });
   landMask = gl.createTexture();
   loadImage('land-mask.png', function(){
     setTexture(landMask, this);
+    --texturesToLoad;
+    maybeDraw();
   });
-  earthTexture = gl.createTexture();
-  loadImage('blue-marble.jpg', function(){
-    setTexture(earthTexture, this);
-  });
+  pad = function(it){
+    if (it >= 10) {
+      return it;
+    } else {
+      return "0" + it;
+    }
+  };
+  for (i = 1; i <= 12; ++i) {
+    loadImage("blue-marble-" + pad(i) + ".jpg", fn$);
+  }
   nightTexture = gl.createTexture();
   loadImage('black-marble.jpg', function(){
     setTexture(nightTexture, this);
+    --texturesToLoad;
+    maybeDraw();
   });
   setupBuffers();
   pointUnder = function(x, y){
@@ -454,4 +487,9 @@ original commented source there. */
     x5$.addEventListener('mouseup', stop);
     x5$.addEventListener('mouseleave', stop);
   });
+  function fn$(){
+    landTextures.push(setTexture(gl.createTexture(), this));
+    --texturesToLoad;
+    maybeDraw();
+  }
 }).call(this);

@@ -31,7 +31,24 @@
     font-size: 12pt;
     margin: .5em 0;
   }
+
+  #loading {
+    position: absolute;
+    z-index: 100;
+    width: 100%;
+  }
+  #loading div {
+    width: 200px;
+    margin: auto;
+  }
 </style>
+
+<div id=loading>
+  <div>
+    <h2>Loading...</h2>
+    <progress max=1 id=load-progress>This might take a while...</progress>
+  </div>
+</div>
 
 <div>
   <canvas id=canvas width=1024 height=1024>

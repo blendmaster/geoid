@@ -116,7 +116,9 @@ programs <<<
 
       varying vec2 tex;
 
-      uniform sampler2D earthTexture;
+      uniform sampler2D curEarthTexture;
+      uniform sampler2D nextEarthTexture;
+      uniform float landBlend;
 
       // tweak variables for masking
       uniform float m;
@@ -157,7 +159,15 @@ programs <<<
           masked.b = masked.b / 0.9 + 0.1;
           gl_FragColor = masked;
         } else {
-          gl_FragColor = texture2D(earthTexture, tex);
+          // mix this and next month
+          // blue marble textures are offset from prime meridian
+          vec2 landCoord = tex;
+          landCoord.x += 0.5;
+          gl_FragColor = mix(
+            texture2D(curEarthTexture, landCoord),
+            texture2D(nextEarthTexture, landCoord),
+            landBlend
+          );
         }
       }"""
     uniforms:

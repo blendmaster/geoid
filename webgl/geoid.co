@@ -341,11 +341,12 @@ $ \pause
     $ \play .disabled = false
 
 export draw = !->
+  t = parseFloat $(\time)value
   if playing
-    t = parseFloat $(\time)value
     speed = parseFloat $(\speed)value
     new-t = mod t + speed, 16
     $ \time .value = new-t
+    t = new-t
     
   ##################################################################
   # first: random noise injection and initial advection
@@ -442,9 +443,28 @@ export draw = !->
 
   load-texture p.globe, blend.texture, \texture 4
 
+  use-day = $(\day)checked
+
+  month-no = mod Math.floor(t), 12
+  next-no = mod month-no + 1, 12
   load-texture p.globe,
-    if $(\day)checked then earth-texture else night-texture,
-    \earthTexture 5
+    if use-day
+      land-textures[month-no]
+    else
+      night-texture
+    \curEarthTexture 5
+
+  if use-day
+    load-texture p.globe,
+      land-textures[next-no]
+      \nextEarthTexture 6
+  else
+    # can't bind texture to multiple points, so just reuse
+    gl.getUniformLocation p.globe, \nextEarthTexture
+      gl.uniform1i &, 5
+
+  gl.getUniformLocation p.globe, \landBlend
+    gl.uniform1f &, t - Math.floor(t)
 
   gl.getUniformLocation p.globe, \mask
     gl.uniform1i &, $(\enable-mask)checked
@@ -493,6 +513,20 @@ function set-texture texture, data
     &src = src
 
 ocean-field = []
+land-textures = []
+
+# 1 ocean texture (soon more)
+# 1 land mask
+# 12 blue marble months
+# 1 dark marble
+textures-to-load = total-textures = 1 + 1 + 12 + 1
+maybe-draw = !->
+  $ \load-progress .value = 1 - total-textures / textures-to-load
+
+  if textures-to-load is 0
+    $ \loading .hidden = true
+    $ \load-progress .value = 0
+    draw!
 
 load-image \packed16.png !->
   c = document.createElement(\canvas) <<< @{width, height}
@@ -504,19 +538,28 @@ load-image \packed16.png !->
       ocean-field.push do
         set-texture gl.createTexture!, ctx.getImageData x, y, 1024 512
 
-  draw!
+  --textures-to-load
+  maybe-draw!
 
 land-mask = gl.createTexture!
 load-image \land-mask.png !->
   set-texture land-mask, this
+  --textures-to-load
+  maybe-draw!
 
-earth-texture = gl.createTexture!
-load-image \blue-marble.jpg !->
-  set-texture earth-texture, this
+pad = -> if it >= 10 then it else "0#{it}"
+
+for i from 1 to 12
+  load-image "blue-marble-#{pad i}.jpg" !->
+    land-textures.push set-texture gl.createTexture!, this
+    --textures-to-load
+    maybe-draw!
 
 night-texture = gl.createTexture!
 load-image \black-marble.jpg !->
   set-texture night-texture, this
+  --textures-to-load
+  maybe-draw!
 
 setup-buffers!
 
