@@ -4,6 +4,19 @@ import numpy as np
 import random
 from video import create_capture
 from common import clock, draw_str
+import sys
+import argparse
+import os
+
+# arg parsing stuff
+
+parser = argparse.ArgumentParser(description='Augment globes through your camera.')
+parser.add_argument('directory',
+                    help='directory to find 450x450 training images, named "LATxLON.jpg".')
+parser.add_argument('-c', '--camera',
+                    help='camera input number to use, default the first camera.',
+                    type=int, default=0)
+args = parser.parse_args()
 
 def rot_z(angle):
   cost = np.cos(np.deg2rad(angle))
@@ -54,42 +67,25 @@ def surface_point(lat, lon, globe_pose):
   norm_flat = np.array([xn, yn, zn])
   norm_len = np.linalg.norm(norm_flat)
 
-  #leng = np.sqrt(x**2 + y**2 + z**2)
-  #print("%f" % leng)
-
   # translate
   return (x + x_g, y + y_g, z + z_g, norm_flat)
 
 fov = 15
+
 def K(width, height):
   f = (width / 2.) / np.tan(np.deg2rad(fov) / 2.)
-  # K
-  # XXX how am I supposed to get square pixels with two different fov's? I dunno
-  # how this is supposed to work
   return np.array([[f , 0  , width / 2 ]   ,
                    [0  , f , height / 2]   ,
                    [0  , 0  , 1         ]])
-
-camera_world_pos = np.array([[0.0], [0.0], [0.0]]);
-
-camera_rot_x = 0.
-camera_rot_y = 0.
-camera_rot_z = 0.
-
-camera_rot = np.dot(rot_z(camera_rot_z),
-                    np.dot(rot_y(camera_rot_y), rot_x(camera_rot_x)))
-
-camera_rot_translate = np.hstack((camera_rot, camera_world_pos))
-
-camera_extrinsics = np.linalg.inv(
-    np.vstack((camera_rot_translate, np.array([0, 0, 0, 1]))))[0:3, :]
 
 # radius, x, y, z, xrot (around x axis), yrot, zrot
 radius = 1
 globe_pose = (1, 0, 0, 30, 30, 30, 0)
 model_globe = (1, 0, 0, 0, 0, 0, 0)
 
-detector = cv2.ORB( nfeatures = 1500 )
+# we don't want too many points from training, but plenty from the camera
+train_detector = cv2.ORB( nfeatures = 400 )
+image_detector = cv2.ORB( nfeatures = 1500 )
 FLANN_INDEX_KDTREE = 1
 FLANN_INDEX_LSH    = 6
 flann_params= dict(algorithm = FLANN_INDEX_LSH,
@@ -104,18 +100,14 @@ matcher = cv2.FlannBasedMatcher(flann_params, {})  # bug : need to pass empty di
 # then when features are matched in the camera image, they can be converted
 # to model (globe) x, y, z and used in solvePnPRansac instead of
 # findHomography()
-known = cv2.imread('prime_equator.jpg', 1)
-eur_known = cv2.imread('54x15.jpg', 1)
-
 # all training images are this size
-ksize = 640.
-hsize = 320.
+ksize = 450.
+hsize = 225. # half size
 
-# masked with white, but just in case
-mask = np.zeros_like(known[:, :, 1], dtype=np.uint8)
-cv2.circle(mask, (int(hsize), int(hsize)), int(hsize), 255, -1)
-known_keypoints, known_descriptors = detector.detectAndCompute(known, mask)
-eur_kp, eur_desc = detector.detectAndCompute(eur_known, mask)
+# we only want to train the center 45x45 degree patch, since the edges aren't
+# that useful and will overlap with other training images
+mask = np.zeros([ksize, ksize], dtype=np.uint8)
+cv2.circle(mask, (int(hsize), int(hsize)), int(hsize / 2.), 255, -1)
 
 # translate all keypoints into x, y, z model globe, centered at some lat, lon
 def known_globe_point(p, centerLat, centerLon):
@@ -141,16 +133,39 @@ def known_globe_point(p, centerLat, centerLon):
 
   return (x, y, z)
 
-#print known_globe_point((0, 320), 90., 0)
-##print surface_point(90., 15., model_globe)
-#sys.exit()
+import re
+import random
 
-cam = create_capture(0)
+class Known:
+  def __init__(self, img, lat, lon, kp, desc):
+    self.img = img
+    self.lat = lat
+    self.lon = lon
+    self.kp = kp
+    self.desc = desc
 
-cam.set(cv2.cv.CV_CAP_PROP_BRIGHTNESS, 0.5)
-cam.set(cv2.cv.CV_CAP_PROP_EXPOSURE, -0.9)
-cam.set(cv2.cv.CV_CAP_PROP_GAIN, 0)
-cam.set(cv2.cv.CV_CAP_PROP_SATURATION, 1)
+    [[[b, g, r]]] = cv2.cvtColor(np.array([[[random.randint(0, 255),
+                                                random.randint(127, 255),
+                                                255]]], dtype=np.uint8),
+                                    cv2.COLOR_HSV2BGR)
+
+    self.color = (int(b), int(g), int(r))
+
+known = []
+for f in os.listdir(args.directory):
+  print("training on %s" % f)
+  img = cv2.imread("%s/%s" % (args.directory, f), 1)
+
+  m = re.match('([\d-]+)x([\d-]+)\.jpg', f)
+  lat, lon = int(m.group(1)), int(m.group(2))
+
+  kp, desc = train_detector.detectAndCompute(img, mask)
+
+  known.append(Known(img, lat, lon, kp, desc))
+
+print("done training!")
+
+cam = create_capture(args.camera)
 cv2.namedWindow('camera')
 
 def filter_matches(kp1, kp2, matches, ratio = 0.75):
@@ -160,11 +175,10 @@ def filter_matches(kp1, kp2, matches, ratio = 0.75):
             m = m[0]
             mkp1.append( kp1[m.queryIdx] )
             mkp2.append( kp2[m.trainIdx] )
-    p1 = np.float32([kp.pt for kp in mkp1])
-    p2 = np.float32([kp.pt for kp in mkp2])
-    kp_pairs = zip(mkp1, mkp2)
-    return p1, p2, kp_pairs
+    return zip(mkp1, mkp2)
 
+last_rvec = np.array([[0.], [0.], [0.]])
+last_tvec = np.array([[0.], [0.], [2.]])
 
 while True:
   ret, img = cam.read()
@@ -178,54 +192,50 @@ while True:
   #vis[0:ksize, w:w+ksize, :] = known
   vis = img
 
-  img_keypoints, img_desc = detector.detectAndCompute(img, None)
-  # XXX why does this happen
-  if img_desc != None:
-
-    raw_matches = matcher.knnMatch(known_descriptors, trainDescriptors=img_desc, k=2)
-    p1, p2, kp_pairs = filter_matches(known_keypoints, img_keypoints, raw_matches)
-
-    raw_matches = matcher.knnMatch(eur_desc, trainDescriptors=img_desc, k=2)
-    p1, p2, eur_pairs = filter_matches(eur_kp, img_keypoints, raw_matches)
+  img_keypoints, img_desc = image_detector.detectAndCompute(img, None)
+  if img_desc != None: # if there are any keypoints
 
     object_points = []
     image_points = []
-    for known_kp, img_kp in kp_pairs:
-    #for img_kp, known_kp in kp_pairs:
-      xim, yim = img_kp.pt
-      xg, yg = known_kp.pt
-      cv2.circle(vis, (int(xim), int(yim)), 2, (0, 0, 255), -1)
-      #cv2.circle(vis, (w + int(xg), int(yg)), 2, (0, 0, 255), -1)
+    point_colors = []
 
-      image_points.append(img_kp.pt)
-      # europe
-      object_points.append(known_globe_point(known_kp.pt, 0., 0.))
+    for know in known:
+      raw_matches = matcher.knnMatch(know.desc, trainDescriptors=img_desc, k=2)
 
-    for known_kp, img_kp in eur_pairs:
-    #for img_kp, known_kp in kp_pairs:
-      xim, yim = img_kp.pt
-      #xg, yg = known_kp.pt
-      cv2.circle(vis, (int(xim), int(yim)), 2, (0, 0, 255), -1)
-      #cv2.circle(vis, (w + int(xg), int(yg)), 2, (0, 0, 255), -1)
+      kp_pairs = filter_matches(know.kp, img_keypoints, raw_matches)
+      for known_kp, img_kp in kp_pairs:
+        xim, yim = img_kp.pt
+        xg, yg = known_kp.pt
 
-      image_points.append(img_kp.pt)
-      # europe
-      object_points.append(known_globe_point(known_kp.pt, 54., 15.))
+        # draw kp on output
+        cv2.circle(vis, (int(xim), int(yim)), 2, know.color, -1)
+        #cv2.circle(vis, (w + int(xg), int(yg)), 2, (0, 0, 255), -1)
 
-    print len(image_points)
+        image_points.append(img_kp.pt)
+        object_points.append(known_globe_point(known_kp.pt, know.lat, know.lon))
+        point_colors.append(know.color)
 
-    if len(image_points) > 50:
+    if len(image_points) > 20:
       obj = np.array(object_points, dtype=np.float32)
       im = np.array(image_points, dtype=np.float32)
 
       N = obj.shape[0]
 
-      rvec, tvec, inliers = cv2.solvePnPRansac(obj.reshape([1, N, 3]), im.reshape([1, N, 2]),
-                                        camera_intrinsics, None,
-                                        flags=cv2.CV_EPNP
-                                        )
+      rvec, tvec, inliers = cv2.solvePnPRansac(
+        obj.reshape([1, N, 3]),
+        im.reshape([1, N, 2]),
+        camera_intrinsics,
+        distCoeffs=None, # assuming no distortion
+        rvec=last_rvec,
+        tvec=last_tvec,
+        useExtrinsicGuess=True,
+        flags=cv2.CV_EPNP
+      )
 
       if inliers != None:
+        # assume pose is relatively good, so use it for next round
+        last_rvec = rvec
+        last_tvec = tvec
 
         # block out globe
         # find radius
@@ -240,8 +250,9 @@ while True:
         for i in inliers:
           xim, yim = image_points[i]
           #xg, yg = kp_pairs[i][0].pt
-
-          cv2.circle(vis, (int(xim), int(yim)), 2, (0, 255, 0), -1)
+          color = point_colors[i]
+          cv2.circle(vis, (int(xim), int(yim)), 5, (0, 0, 0), -1)
+          cv2.circle(vis, (int(xim), int(yim)), 2, color, -1)
           #cv2.circle(vis, (w + int(xg), int(yg)), 2, (0, 255, 0), -1)
           #cv2.line(vis, (int(xim), int(yim)), (w + int(xg), int(yg)), (0, 255, 0))
 
