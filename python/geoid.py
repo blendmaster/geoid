@@ -16,6 +16,11 @@ parser.add_argument('directory',
 parser.add_argument('-c', '--camera',
                     help='camera input number to use, default the first camera.',
                     type=int, default=0)
+parser.add_argument('-v', '--video',
+                    help='Instead of webcam, use a prerecorded video file.',)
+parser.add_argument('--skip-frames',
+                    help='Skip every N frames (if the video is slow)',
+                    type=int, default=0)
 args = parser.parse_args()
 
 def rot_z(angle):
@@ -65,7 +70,6 @@ def surface_point(lat, lon, globe_pose):
   [[xn], [yn], [zn]] = np.dot(rot, norm)
 
   norm_flat = np.array([xn, yn, zn])
-  norm_len = np.linalg.norm(norm_flat)
 
   # translate
   return (x + x_g, y + y_g, z + z_g, norm_flat)
@@ -188,7 +192,12 @@ print("done training!")
 
 cv2.imshow('training', grid_img)
 
-cam = create_capture(args.camera)
+if args.video != None:
+  print("opening video file %s..." % args.video)
+  cam = cv2.VideoCapture(args.video)
+else:
+  cam = create_capture(args.camera)
+
 cv2.namedWindow('camera')
 
 def filter_matches(kp1, kp2, matches, ratio = 0.75):
@@ -204,7 +213,10 @@ last_rvec = np.array([[0.], [0.], [0.]])
 last_tvec = np.array([[0.], [0.], [2.]])
 
 while True:
-  ret, img = cam.read()
+  img = None
+  for i in range(args.skip_frames + 1):
+    ret, img = cam.read()
+  if img == None: break
   t = clock()
 
   h, w, _ = img.shape
@@ -284,8 +296,15 @@ while True:
 
           cv2.circle(g, p, 5, (0,0,0), 1)
 
-        [[est_x], [est_y], [est_z]] = tvec
-        [[est_rx], [est_ry], [est_rz]] = rvec
+        #[[est_x], [est_y], [est_z]] = tvec
+        #[[est_rx], [est_ry], [est_rz]] = rvec
+        #pose = (1., est_x, est_y, est_z, est_rz, est_ry, est_rz)
+        #x, y, z, norm = surface_point(0, 0, pose)
+        #print ""
+        #print "(0, 0):", x, y, z, norm
+        #print "origin: ", est_x, est_y, est_z
+        #print "rot: ", np.rad2deg(rvec)
+        #print "dot(eye, norm):", np.dot(np.array([-est_x, -est_y, -est_z]), norm)
 
         ## draw equator/prime meridian
         for j in range(-90, 90, 5):
@@ -295,15 +314,16 @@ while True:
           x2, y2, z2, _ = surface_point(0, j + 5, model_globe)
           [[[x_im2, y_im2]]], _ = cv2.projectPoints(np.array([(x2, y2, z2)]), rvec, tvec, camera_intrinsics, None)
 
-          cv2.line(vis, (int(x_im), int(y_im)), (int(x_im2), int(y_im2)), (255, 255, 255), 2)
+          cv2.line(vis, (int(x_im), int(y_im)), (int(x_im2), int(y_im2)), (255, 0, 255), 2)
 
+        # prime meridian
         for j in range(-90, 90, 5):
           x, y, z, _ = surface_point(j, 0, model_globe)
           [[[x_im, y_im]]], _ = cv2.projectPoints(np.array([(x, y, z)]), rvec, tvec, camera_intrinsics, None)
           x2, y2, z2, _ = surface_point(j + 5, 0, model_globe)
           [[[x_im2, y_im2]]], _ = cv2.projectPoints(np.array([(x2, y2, z2)]), rvec, tvec, camera_intrinsics, None)
 
-          cv2.line(vis, (int(x_im), int(y_im)), (int(x_im2), int(y_im2)), (255, 255, 255), 2)
+          cv2.line(vis, (int(x_im), int(y_im)), (int(x_im2), int(y_im2)), (0, 255, 255), 2)
 
         ## draw edge of globe
         for j in range(0, 360, 5):
