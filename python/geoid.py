@@ -21,6 +21,12 @@ parser.add_argument('-v', '--video',
 parser.add_argument('--skip-frames',
                     help='Skip every N frames (if the video is slow)',
                     type=int, default=0)
+parser.add_argument('--camera-desc',
+                    help='Set number of ORB descriptors calculated for each frame, default 1500',
+                    type=int, default=1500)
+parser.add_argument('--train-desc',
+                    help='Set number of ORB descriptors calculated for each training image, default 400',
+                    type=int, default=400)
 args = parser.parse_args()
 
 def rot_z(angle):
@@ -88,8 +94,8 @@ globe_pose = (1, 0, 0, 30, 30, 30, 0)
 model_globe = (1, 0, 0, 0, 0, 0, 0)
 
 # we don't want too many points from training, but plenty from the camera
-train_detector = cv2.ORB( nfeatures = 400 )
-image_detector = cv2.ORB( nfeatures = 1500 )
+train_detector = cv2.ORB( nfeatures = args.train_desc )
+image_detector = cv2.ORB( nfeatures = args.camera_desc )
 FLANN_INDEX_KDTREE = 1
 FLANN_INDEX_LSH    = 6
 flann_params= dict(algorithm = FLANN_INDEX_LSH,
@@ -211,6 +217,9 @@ def filter_matches(kp1, kp2, matches, ratio = 0.75):
 
 last_rvec = np.array([[0.], [0.], [0.]])
 last_tvec = np.array([[0.], [0.], [2.]])
+
+num_frames = 0
+total_time = 0
 
 while True:
   img = None
@@ -335,6 +344,9 @@ while True:
           cv2.line(vis, (int(x_im), int(y_im)), (int(x_im2), int(y_im2)), (255, 255, 255), 2)
   dt = clock() - t
 
+  total_time = total_time + dt
+  num_frames = num_frames + 1
+
   draw_str(vis, (20, 20), 'time: %.1f ms' % (dt*1000))
 
   cv2.imshow('camera', vis)
@@ -345,4 +357,6 @@ while True:
 
 cam.release()
 cv2.destroyAllWindows()
-
+print "number of frames: %i" % num_frames
+print "total computation time: %f seconds" % total_time
+print "average time per frame: %f seconds" % (float(total_time) / float(num_frames))
