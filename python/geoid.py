@@ -137,12 +137,14 @@ import re
 import random
 
 class Known:
-  def __init__(self, img, lat, lon, kp, desc):
+  def __init__(self, img, lat, lon, kp, desc, i, j):
     self.img = img
     self.lat = lat
     self.lon = lon
     self.kp = kp
     self.desc = desc
+    self.i = i
+    self.j = j
 
     [[[b, g, r]]] = cv2.cvtColor(np.array([[[random.randint(0, 255),
                                                 random.randint(127, 255),
@@ -152,7 +154,17 @@ class Known:
     self.color = (int(b), int(g), int(r))
 
 known = []
-for f in os.listdir(args.directory):
+files = os.listdir(args.directory)
+
+# make grid of training images for display
+grid = 100
+fgrid = 100.
+grid_size = np.ceil(np.sqrt(len(files))) * grid
+grid_img = np.zeros([grid_size, grid_size, 3], dtype=np.uint8)
+i = 0
+j = 0
+
+for f in files:
   print("training on %s" % f)
   img = cv2.imread("%s/%s" % (args.directory, f), 1)
 
@@ -161,9 +173,19 @@ for f in os.listdir(args.directory):
 
   kp, desc = train_detector.detectAndCompute(img, mask)
 
-  known.append(Known(img, lat, lon, kp, desc))
+  # add to grid
+  grid_img[i:(i + grid), j:(j + grid), :] = cv2.resize(img, dsize=(grid, grid))
+
+  known.append(Known(img, lat, lon, kp, desc, i, j))
+
+  j = j + grid
+  if j == grid_size:
+    j = 0
+    i = i + grid
 
 print("done training!")
+
+cv2.imshow('training', grid_img)
 
 cam = create_capture(args.camera)
 cv2.namedWindow('camera')
@@ -187,10 +209,8 @@ while True:
   h, w, _ = img.shape
   camera_intrinsics = K(w, h)
 
-  #vis = np.zeros((ksize, w + ksize, 3), dtype=np.uint8)
-  #vis[0:h, 0:w, :] = img
-  #vis[0:ksize, w:w+ksize, :] = known
   vis = img
+  g = grid_img.copy()
 
   img_keypoints, img_desc = image_detector.detectAndCompute(img, None)
   if img_desc != None: # if there are any keypoints
@@ -198,6 +218,7 @@ while True:
     object_points = []
     image_points = []
     point_colors = []
+    grid_points = []
 
     for know in known:
       raw_matches = matcher.knnMatch(know.desc, trainDescriptors=img_desc, k=2)
@@ -209,7 +230,12 @@ while True:
 
         # draw kp on output
         cv2.circle(vis, (int(xim), int(yim)), 2, know.color, -1)
-        #cv2.circle(vis, (w + int(xg), int(yg)), 2, (0, 0, 255), -1)
+
+        # draw original on grid
+        p = (int((xg / ksize * fgrid) + know.j),
+             int((yg / ksize * fgrid) + know.i))
+        grid_points.append(p)
+        cv2.circle(g, p, 2, know.color, -1)
 
         image_points.append(img_kp.pt)
         object_points.append(known_globe_point(known_kp.pt, know.lat, know.lon))
@@ -249,12 +275,13 @@ while True:
 
         for i in inliers:
           xim, yim = image_points[i]
-          #xg, yg = kp_pairs[i][0].pt
           color = point_colors[i]
+          p = grid_points[i]
+
           cv2.circle(vis, (int(xim), int(yim)), 5, (0, 0, 0), -1)
           cv2.circle(vis, (int(xim), int(yim)), 2, color, -1)
-          #cv2.circle(vis, (w + int(xg), int(yg)), 2, (0, 255, 0), -1)
-          #cv2.line(vis, (int(xim), int(yim)), (w + int(xg), int(yg)), (0, 255, 0))
+
+          cv2.circle(g, p, 5, (0,0,0), 1)
 
         [[est_x], [est_y], [est_z]] = tvec
         [[est_rx], [est_ry], [est_rz]] = rvec
@@ -290,6 +317,7 @@ while True:
   draw_str(vis, (20, 20), 'time: %.1f ms' % (dt*1000))
 
   cv2.imshow('camera', vis)
+  cv2.imshow('training', g)
 
   if 0xFF & cv2.waitKey(5) == 27:
     break
