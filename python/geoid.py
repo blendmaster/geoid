@@ -174,7 +174,8 @@ for f in files:
   kp, desc = train_detector.detectAndCompute(img, mask)
 
   # add to grid
-  grid_img[i:(i + grid), j:(j + grid), :] = cv2.resize(img, dsize=(grid, grid))
+  grid_img[i:(i + grid), j:(j + grid), :] = cv2.resize(img, dsize=(grid, grid),
+                                                       interpolation=cv2.INTER_AREA)
 
   known.append(Known(img, lat, lon, kp, desc, i, j))
 
