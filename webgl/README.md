@@ -12,6 +12,8 @@ Geoid is Steven Ruppert's final project for **CSCI 547 Scientific Visualization*
 
 The project was inspired by [Fernanda Viégas and Martin Wattenberg's animated US Wind map][3], and [Nicolas Garcia Belmonte's work with animated vector field visualization and WebGL][4].
 
+Originally, this project was going to be a visualization layer on top of the augmented reality globe project in this same repository, but that part of the project didn't work as well as expected, so it is instead implemented in WebGL.
+
 ## Technique
 
 A basic sphere is textured with a visualization of the ocean surface current vector field (and satellite imagery of land from [Blue Marble Next Generation][5]. Textures are mapped to the sphere in longitude/latitude space. The visualization texture is generated every frame using the following technique:
