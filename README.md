@@ -13,4 +13,8 @@ These are Steven Ruppert's final projects for **EGGN 512 Computer Vision** and *
 * The `training` directory contains raw and cropped training images for the `geoid.py` program in the `python` directory.
 * The `webgl` directory contains the ocean current visualization program, also hosted at <http://blendmaster.github.io/geoid/>
 
-View the README.md in each folder for more details
+View the README.md in each folder for more details.
+
+## License
+
+All original code and content in this repository is released to the public domain--or as close as legally possible--under the terms of the [Unlicense](http://unlicense.org).
