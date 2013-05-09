@@ -51,7 +51,13 @@ to run the application. Additional explanation of the tunable parameters is avai
 
 ### Screenshots
 
-TODO
+![circumpolar current](http://i.imgur.com/RzUM5fv.png)
+
+![south africa](http://i.imgur.com/9vkzXAG.png)
+
+![loop current](http://i.imgur.com/7e2HTYi.png)
+
+![time for icebergs](http://i.imgur.com/yckIlR5.png)
 
 ## Discussion
 
@@ -65,7 +71,7 @@ Geoid does not implement temporally-coherent noise transport as described in sec
 
 The temporal linear interpolation of the dataset (monthly averages) does create some spurious effects, such as these stretched-out circular flows off the coast of Africa:
 
-TODO image
+![lerp error](http://i.imgur.com/QY3W9lV.jpg)
 
 Using the 3-day average timeslices from ECCO2 dataset would reduce these artifacts.
 
