@@ -1,6 +1,10 @@
 # Geoid, webgl edition
 
-Geoid is a visualization of global ocean currents from the [ECCO2][1] dataset, using a the method described in [Animation of Orthogonal Texture-based Vector Field Visualization (2007), by Sven Bachthaler and Daniel Weiskopf][0], with some simplifications. Geoid is implemented in WebGL and Javascript (through [coco][2]).
+Geoid is a visualization of global ocean currents from the [ECCO2][1] dataset, using the method described in [Animation of Orthogonal Texture-based Vector Field Visualization (2007), by Sven Bachthaler and Daniel Weiskopf][0], with some simplifications. Geoid is implemented in WebGL and Javascript (through [coco][2]).
+
+If you just want to see it work, browse to:
+
+http://blendmaster.github.io/geoid
 
 ## Motivation
 
@@ -10,7 +14,7 @@ The project was inspired by [Fernanda Viégas and Martin Wattenberg's animated U
 
 ## Technique
 
-A basic sphere is textured with a visualization of the ocean surface current vector field (and satelilte imagery of land from [Blue Marble Next Generation][5)]. Textures are mapped to the sphere in longitude/latitude space. The visualization texture is generated every frame using the following technique:
+A basic sphere is textured with a visualization of the ocean surface current vector field (and satellite imagery of land from [Blue Marble Next Generation][5]. Textures are mapped to the sphere in longitude/latitude space. The visualization texture is generated every frame using the following technique:
 
 1. Create random noise texture using a pseudo-random number generator.
 2. Convolve the noise texture using the Line Integral Convolution (LIC) technique and the vector field _orthogonal_ to the ocean current field. The orthogonal field is generated from the real field using the mapping `orthogonal(x, y) = [-original(x, y).y, original(x, y).x]`.
@@ -33,9 +37,9 @@ The dataset can be downloaded and packed using the shell and GNU Octave scripts 
 
 Most of the tunable parameters in the algorithm are exposed to the user as sliders, which control uniform variables in the shader programs.
 
-While the original paper only uses the orthogonal LIC texture due to its more easily human-detectable motion, geoid also includes the option to use a traditional LIC texture, which--in the author's opinion--looks nicer, despite its less easily detectable motion.
+While the original paper only uses the orthogonal LIC texture due to its more easily human-detectable motion, Geoid also includes the option to use a traditional LIC texture, which--in the author's opinion--looks nicer, despite its less easily detectable motion.
 
-The main animation loop and supporting Javascript/coco for the slider variables and mouse rotation/zooming are in the file `geoid.co`. Browser support for the sliders and mouse wheel events are polyfilled in the two other javascript files.
+The main animation loop and supporting Javascript/coco for the slider variables and mouse rotation/zooming are in the file `geoid.co`. Browser support for the sliders and mouse wheel events are polyfilled in the two other Javascript files.
 
 ## Results
 
@@ -57,7 +61,7 @@ While interesting to play with, the large amount of user parameters is not ideal
 
 While the lossy compression of the current dataset doesn't result in too much loss of precision, some artifacts are still visible due to the limited precision, most notably the limited levels of pixel values which create sharp color bands after contrast stretching. Using a floating-point grayscale texture as a transport between shaders would increase the quality of the visualization after contrast stretching.
 
-Geoid does not implement temporally-coherent noise transport as described in section 3.3 of [bachthaler's paper][0]. Doing so would not take too much work, however, as lookups into the ocean dataset are temporally linearly interpolated between time slices.
+Geoid does not implement temporally-coherent noise transport as described in section 3.3 of [Bachthaler's paper][0]. Doing so would not take too much work, however, as lookups into the ocean dataset are temporally linearly interpolated between time slices.
 
 The temporal linear interpolation of the dataset (monthly averages) does create some spurious effects, such as these stretched-out circular flows off the coast of Africa:
 
