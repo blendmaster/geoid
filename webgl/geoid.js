@@ -380,8 +380,8 @@ original commented source there. */
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(draw);
   };
-  window.requestAnimationFrame = window.mozRequestAnimationFrame || window.webkitRequestAnimationFrame;
-  window.cancelAnimationFrame = window.mozCancelAnimationFrame || window.webkitCancelAnimationFrame;
+  window.requestAnimationFrame = window.requestAnimationFrame || window.mozRequestAnimationFrame || window.webkitRequestAnimationFrame;
+  window.cancelAnimationFrame = window.cancelAnimationFrame || window.mozCancelAnimationFrame || window.webkitCancelAnimationFrame;
   function setTexture(texture, data){
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.bindTexture(gl.TEXTURE_2D, texture);

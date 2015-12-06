@@ -500,9 +500,11 @@ export draw = !->
   cancelAnimationFrame frame
   frame := requestAnimationFrame draw
 
-window.requestAnimationFrame = window.mozRequestAnimationFrame
+window.requestAnimationFrame = window.requestAnimationFrame
+                            or window.mozRequestAnimationFrame
                             or window.webkitRequestAnimationFrame
-window.cancelAnimationFrame = window.mozCancelAnimationFrame
+window.cancelAnimationFrame = window.cancelAnimationFrame
+                            or window.mozCancelAnimationFrame
                             or window.webkitCancelAnimationFrame
 
 function set-texture texture, data
